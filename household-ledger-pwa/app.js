@@ -477,7 +477,23 @@
 
   function renderManage(){
     const vehicles=state.vehicles;
+    const activeRecurring=state.recurring.filter(item=>item.active!==false);
+    const recurringExpenseCount=activeRecurring.filter(item=>item.type==='expense').length;
+    const recurringIncomeCount=activeRecurring.filter(item=>item.type==='income').length;
+    const recurringSummary=activeRecurring.length
+      ? `${recurringExpenseCount?`고정지출 ${recurringExpenseCount}개`:''}${recurringExpenseCount&&recurringIncomeCount?' · ':''}${recurringIncomeCount?`반복수입 ${recurringIncomeCount}개`:''}`
+      : '이자·학원비·보험료 등을 매월 자동 기록';
     els.main.innerHTML=`
+      <section class="section">
+        <div class="section-head"><div><h2>고정지출</h2><p>매월 입력하지 않아도 자동 반영</p></div><button class="text-button" data-action="recurring-settings">관리</button></div>
+        <div class="card">
+          <button class="setting-row" data-action="recurring-settings" style="width:100%;border:0;background:transparent;text-align:left">
+            <span class="row-icon"><i class="ph-duotone ph-arrows-clockwise"></i></span>
+            <span class="setting-copy"><strong>${activeRecurring.length?`${activeRecurring.length}개 등록됨`:'고정지출을 등록해보세요'}</strong><span>${esc(recurringSummary)}</span></span>
+            <i class="ph ph-caret-right" style="color:var(--text-2)"></i>
+          </button>
+        </div>
+      </section>
       <section class="section">
         <div class="section-head"><div><h2>자동차</h2><p>기본 항목은 엔진오일만</p></div><button class="text-button" data-action="add-vehicle">차량 추가</button></div>
         ${vehicles.length?vehicles.map(renderVehicleCard).join('<div style="height:10px"></div>'):empty('car','등록된 차량이 없습니다','차량을 추가하면 교체거리 기준으로 관리할 수 있습니다.')}
@@ -488,6 +504,7 @@
       </section>`;
     els.main.querySelector('[data-action="add-vehicle"]')?.addEventListener('click',()=>openVehicleSheet());
     els.main.querySelector('[data-action="add-custom"]')?.addEventListener('click',openCustomManageSheet);
+    els.main.querySelectorAll('[data-action="recurring-settings"]').forEach(btn=>btn.addEventListener('click',openRecurringSheet));
     els.main.querySelectorAll('[data-vehicle]').forEach(btn=>btn.addEventListener('click',()=>openVehicleDetail(btn.dataset.vehicle)));
     els.main.querySelectorAll('[data-custom]').forEach(btn=>btn.addEventListener('click',()=>openCustomDetail(btn.dataset.custom)));
   }
@@ -594,8 +611,80 @@
   }
 
   function openRecurringSheet(){
-    openSheet('반복내역','자동 반영',`${state.recurring.length?`<div class="list">${state.recurring.map(r=>`<div class="list-row"><span class="row-icon"><i class="ph-duotone ph-arrows-clockwise"></i></span><span class="row-main"><span class="row-title">${esc(r.note||r.category)}</span><span class="row-meta">매월 ${r.day}일 · ${r.autoPost?'자동 반영':'확인 후 반영'}</span></span><button class="icon-button" data-recurring-delete="${r.id}" style="width:34px;height:34px"><i class="ph ph-trash"></i></button></div>`).join('')}</div>`:empty('arrows-clockwise','반복내역이 없습니다','빠른 입력에서 매달 반복을 켜면 등록됩니다.')}`);
+    const entries=state.recurring;
+    openSheet('고정지출 관리','매월 자동 반영',`
+      <div class="subtle-box" style="margin-bottom:12px">이자, 학원비, 보험료처럼 매월 같은 금액이 나가는 항목을 등록하세요. 등록한 날짜가 되면 해당 월 내역으로 자동 기록됩니다.</div>
+      <button class="primary-button" id="addRecurringBtn" style="margin-bottom:13px">+ 고정지출 추가</button>
+      ${entries.length?`<div class="list">${entries.map(r=>{
+        const kind=r.type==='income'?'반복수입':'고정지출';
+        const status=r.active===false?'일시정지':(r.autoPost?'자동 반영':'확인 후 반영');
+        const sign=r.type==='income'?'+':'-';
+        return `<div class="list-row recurring-row" style="grid-template-columns:44px minmax(0,1fr) auto auto">
+          <span class="row-icon"><i class="ph-duotone ph-arrows-clockwise"></i></span>
+          <button class="recurring-main" data-recurring-edit="${escAttr(r.id)}" aria-label="${escAttr(r.note||r.category)} 수정"><span class="row-main"><span class="row-title">${esc(r.note||r.category)}</span><span class="row-meta">${kind} · 매월 ${Number(r.day)||1}일 · ${status}</span></span></button>
+          <span class="row-amount ${r.type}">${sign}${fmtMoney(r.amount)}</span>
+          <button class="icon-button" data-recurring-delete="${escAttr(r.id)}" aria-label="${escAttr(r.note||r.category)} 삭제" style="width:34px;height:34px"><i class="ph ph-trash"></i></button>
+        </div>`;
+      }).join('')}</div>`:empty('arrows-clockwise','등록된 고정지출이 없습니다','위의 추가 버튼에서 이자·학원비 등을 등록해보세요.')}`);
+    document.getElementById('addRecurringBtn').addEventListener('click',()=>openRecurringEditSheet());
+    els.sheetBody.querySelectorAll('[data-recurring-edit]').forEach(btn=>btn.addEventListener('click',()=>openRecurringEditSheet(btn.dataset.recurringEdit)));
     els.sheetBody.querySelectorAll('[data-recurring-delete]').forEach(btn=>btn.addEventListener('click',()=>{state.recurring=state.recurring.filter(r=>r.id!==btn.dataset.recurringDelete);save();openRecurringSheet();showToast('반복내역을 삭제했습니다.');}));
+  }
+
+  function openRecurringEditSheet(existingId=null){
+    const existing=existingId?state.recurring.find(item=>item.id===existingId):null;
+    const data=existing||{type:'expense',amount:'',category:state.expenseCategories.includes('주거')?'주거':state.expenseCategories[0],note:'',paymentMethod:state.paymentMethods[0],day:1,autoPost:true,shared:state.profile.defaultShared!==false,active:true};
+    openSheet(existing?'고정지출 수정':'고정지출 추가','매월 자동 반영',recurringForm(data,!!existing));
+    wireRecurringForm(existingId);
+  }
+
+  function recurringForm(data,isEdit){
+    const categories=categoriesForType(data.type);
+    return `<form id="recurringForm">
+      <div class="form-section"><div class="segmented"><button type="button" data-recurring-type="expense" class="${data.type==='expense'?'active':''}">고정지출</button><button type="button" data-recurring-type="income" class="${data.type==='income'?'active':''}">반복수입</button></div></div>
+      <div class="form-section"><label class="form-label">매월 금액</label><input id="recurringAmount" class="input amount-input" inputmode="numeric" pattern="[0-9]*" placeholder="0" value="${data.amount||''}" autofocus></div>
+      <div class="form-section"><div class="form-label"><span>카테고리</span><span>카테고리 설정에서 추가 가능</span></div><select id="recurringCategory" class="select">${categories.map(c=>`<option value="${escAttr(c)}" ${c===data.category?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+      <div class="form-section inline-grid inline-grid-stack-mobile"><div><label class="form-label">매월 반영일</label><input id="recurringDay" class="input" type="number" min="1" max="31" inputmode="numeric" value="${Number(data.day)||1}"></div><div><label class="form-label">결제수단</label><select id="recurringPayment" class="select">${state.paymentMethods.map(p=>`<option ${p===data.paymentMethod?'selected':''}>${esc(p)}</option>`).join('')}</select></div></div>
+      <div class="form-section"><label class="form-label">내용 <span>선택</span></label><input id="recurringNote" class="input" placeholder="예: 아파트 대출이자, 아이 학원비" value="${escAttr(data.note||'')}"></div>
+      ${state.profile.mode!=='solo'?`<div class="form-section"><div class="switch-row"><div class="switch-copy"><strong>공동 내역으로 공유</strong><span>끄면 이 고정지출만 비공개로 저장됩니다.</span></div><input id="recurringShared" class="toggle" type="checkbox" ${data.shared!==false?'checked':''}></div></div>`:''}
+      <div class="form-section"><div class="switch-row"><div class="switch-copy"><strong>매월 자동 기록</strong><span>반영일이 지나 앱을 열면 해당 월 내역을 자동으로 만듭니다.</span></div><input id="recurringAutoPost" class="toggle" type="checkbox" ${data.autoPost!==false?'checked':''}></div><div class="switch-row"><div class="switch-copy"><strong>사용 중</strong><span>잠시 멈출 때는 삭제하지 않고 꺼둘 수 있습니다.</span></div><input id="recurringActive" class="toggle" type="checkbox" ${data.active!==false?'checked':''}></div></div>
+      <div class="button-row"><button type="button" class="secondary-button" id="recurringCancel">취소</button><button class="primary-button" type="submit">${isEdit?'수정':'등록'}</button></div>
+      ${isEdit?`<div style="height:9px"></div><button type="button" class="danger-button" id="recurringDelete">고정지출 삭제</button>`:''}
+    </form>`;
+  }
+
+  function wireRecurringForm(existingId){
+    const existing=existingId?state.recurring.find(item=>item.id===existingId):null;
+    let type=existing?.type||'expense';
+    els.sheetBody.querySelectorAll('[data-recurring-type]').forEach(btn=>btn.addEventListener('click',()=>{
+      type=btn.dataset.recurringType;
+      els.sheetBody.querySelectorAll('[data-recurring-type]').forEach(item=>item.classList.toggle('active',item===btn));
+      const category=document.getElementById('recurringCategory');
+      const list=categoriesForType(type);
+      category.innerHTML=list.map(item=>`<option value="${escAttr(item)}">${esc(item)}</option>`).join('');
+    }));
+    document.getElementById('recurringCancel').addEventListener('click',()=>existingId?openRecurringSheet():closeSheet());
+    document.getElementById('recurringDelete')?.addEventListener('click',()=>{
+      state.recurring=state.recurring.filter(item=>item.id!==existingId);
+      save();closeSheet();render();showToast('고정지출을 삭제했습니다.');
+    });
+    document.getElementById('recurringForm').addEventListener('submit',event=>{
+      event.preventDefault();
+      const amount=Number(String(document.getElementById('recurringAmount').value).replace(/[^0-9.-]/g,''));
+      const day=Number(document.getElementById('recurringDay').value);
+      if (!(amount>0)){showToast('금액을 입력해주세요.');return;}
+      if (!Number.isInteger(day)||day<1||day>31){showToast('매월 반영일은 1~31일로 입력해주세요.');return;}
+      const item={
+        id:existingId||uid(),type,amount,category:document.getElementById('recurringCategory').value,
+        note:document.getElementById('recurringNote').value.trim(),paymentMethod:document.getElementById('recurringPayment').value,
+        day,autoPost:document.getElementById('recurringAutoPost').checked,
+        shared:state.profile.mode==='solo'?true:document.getElementById('recurringShared').checked,
+        active:document.getElementById('recurringActive').checked
+      };
+      if(existingId){const index=state.recurring.findIndex(entry=>entry.id===existingId);if(index>=0)state.recurring[index]=item;}
+      else state.recurring.push(item);
+      save();processRecurring();closeSheet();render();showToast(existingId?'고정지출을 수정했습니다.':'고정지출을 등록했습니다.');
+    });
   }
 
   function openSettingsSheet(){
@@ -608,6 +697,7 @@
       <div class="settings-group"><p class="settings-title">강조색</p><div class="accent-grid">${Object.entries(accentPresets).map(([name,color])=>`<button class="accent-swatch ${pref.accent===name?'active':''}" data-accent="${name}" aria-label="${name}" style="background:${color}"></button>`).join('')}<label class="accent-swatch ${pref.accent==='custom'?'active':''}" style="overflow:hidden;position:relative;background:${pref.customAccent||'#315d73'}"><input id="customAccent" type="color" value="${pref.customAccent||'#315d73'}" style="position:absolute;inset:-15px;width:80px;height:80px;opacity:0;cursor:pointer"></label></div></div>
       <div class="settings-group"><p class="settings-title">가계부</p><div class="settings-card">
         <button class="setting-row" id="budgetSetting" style="width:100%;border-top:0;border-left:0;border-right:0;background:transparent;text-align:left"><span class="setting-copy"><strong>예산</strong><span>${fmtMoney(state.budget.monthly||0)}</span></span><i class="ph ph-caret-right"></i></button>
+        <button class="setting-row" id="recurringSetting" style="width:100%;border-top:0;border-left:0;border-right:0;background:transparent;text-align:left"><span class="setting-copy"><strong>고정지출 관리</strong><span>${state.recurring.filter(item=>item.active!==false).length}개 · 이자·학원비 매월 자동 기록</span></span><i class="ph ph-caret-right"></i></button>
         <button class="setting-row" id="categorySetting" style="width:100%;border-top:0;border-left:0;border-right:0;background:transparent;text-align:left"><span class="setting-copy"><strong>카테고리</strong><span>지출 ${state.expenseCategories.length}개 · 수입 ${state.incomeCategories.length}개</span></span><i class="ph ph-caret-right"></i></button>
         <button class="setting-row" id="paymentSetting" style="width:100%;border:0;background:transparent;text-align:left"><span class="setting-copy"><strong>결제수단</strong><span>${state.paymentMethods.length}개</span></span><i class="ph ph-caret-right"></i></button>
       </div></div>
@@ -626,6 +716,7 @@
     els.sheetBody.querySelectorAll('[data-accent]').forEach(btn=>btn.addEventListener('click',()=>{state.preferences.accent=btn.dataset.accent;save();applyTheme();openSettingsSheet();}));
     document.getElementById('customAccent')?.addEventListener('input',e=>{state.preferences.customAccent=e.target.value;state.preferences.accent='custom';save();applyTheme();});
     document.getElementById('budgetSetting').addEventListener('click',openBudgetSheet);
+    document.getElementById('recurringSetting').addEventListener('click',openRecurringSheet);
     document.getElementById('categorySetting').addEventListener('click',openCategorySheet);
     document.getElementById('paymentSetting').addEventListener('click',openPaymentSheet);
     document.getElementById('clearSample')?.addEventListener('click',()=>{state.transactions=[];state.metadata.sample=false;state.metadata.recurringPosted={};save();closeSheet();render();showToast('예시 내역을 지웠습니다.');});

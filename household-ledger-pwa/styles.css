@@ -161,6 +161,8 @@ html[data-theme="rose"]{
 .row-amount.income{color:var(--income)}
 .row-amount.expense{color:var(--text)}
 .private-dot{width:7px;height:7px;background:var(--text-2);border-radius:50%;display:inline-block;flex:none}
+.recurring-main{min-width:0;width:100%;padding:0;border:0;background:transparent;text-align:left;color:inherit}
+.recurring-main:active{opacity:.65}
 
 .empty-state{padding:30px 18px;text-align:center;color:var(--text-2)}
 .empty-state i{display:block;font-size:34px;margin-bottom:9px;color:var(--accent)}
