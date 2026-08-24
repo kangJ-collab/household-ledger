@@ -1,0 +1,11 @@
+# Windows / editor files
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+
+# Local archives and temporary files
+*.zip
+*.tmp
+*.temp
+

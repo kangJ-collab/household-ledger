@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f4f5f6" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="우리집 가계부" />
+  <title>우리집 가계부</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="32x32" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <script>
+    (()=>{
+      let pref='system';
+      try{
+        const raw=localStorage.getItem('household-ledger:v1');
+        const saved=raw?JSON.parse(raw):null;
+        pref=saved?.preferences?.theme||'system';
+      }catch(_){}
+      const resolved=pref==='system'
+        ?(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')
+        :pref;
+      document.documentElement.dataset.theme=resolved;
+      document.documentElement.dataset.themePreference=pref;
+      document.documentElement.style.colorScheme=resolved==='dark'?'dark':'light';
+    })();
+  </script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow" id="householdLabel">우리집</p>
+        <h1 id="pageTitle">홈</h1>
+      </div>
+      <div class="topbar-actions">
+        <button class="icon-button" id="privacyQuickBtn" aria-label="비공개 내역 보기">
+          <i class="ph ph-eye-slash"></i>
+        </button>
+        <button class="icon-button" id="settingsBtn" aria-label="설정 열기">
+          <i class="ph ph-gear-six"></i>
+        </button>
+      </div>
+    </header>
+
+    <main id="mainContent" class="main-content" tabindex="-1"></main>
+
+    <nav class="bottom-nav" aria-label="주요 메뉴">
+      <button class="nav-item active" data-route="home">
+        <i class="ph-duotone ph-house"></i><span>홈</span>
+      </button>
+      <button class="nav-item" data-route="transactions">
+        <i class="ph-duotone ph-receipt"></i><span>사용내역</span>
+      </button>
+      <button class="nav-add" id="quickAddBtn" aria-label="내역 추가">
+        <i class="ph ph-plus"></i>
+      </button>
+      <button class="nav-item" data-route="stats">
+        <i class="ph-duotone ph-chart-donut"></i><span>통계</span>
+      </button>
+      <button class="nav-item" data-route="manage">
+        <i class="ph-duotone ph-wrench"></i><span>관리</span>
+      </button>
+    </nav>
+  </div>
+
+  <div class="backdrop" id="backdrop" hidden></div>
+  <section class="sheet" id="sheet" aria-modal="true" role="dialog" hidden>
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <div>
+        <p class="eyebrow" id="sheetEyebrow"></p>
+        <h2 id="sheetTitle"></h2>
+      </div>
+      <button class="icon-button" id="sheetCloseBtn" aria-label="닫기"><i class="ph ph-x"></i></button>
+    </div>
+    <div id="sheetBody" class="sheet-body"></div>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="./icons.js" defer></script>
+  <script src="./app.js" defer></script>
+</body>
+</html>
