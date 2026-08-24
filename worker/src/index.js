@@ -4,7 +4,7 @@ const INVITE_TTL_MS = 10 * 60 * 1000;
 const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
 const MAX_BODY_BYTES = 512 * 1024;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+const RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 class HttpError extends Error {
   constructor(status, message, extra = {}) {
