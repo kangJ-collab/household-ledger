@@ -226,6 +226,7 @@ html[data-theme="rose"]{
 }
 .sheet-handle{width:42px;height:4px;border-radius:999px;background:var(--line);margin:8px auto 2px}
 .sheet-head{display:flex;align-items:center;justify-content:space-between;padding:11px 16px 9px;border-bottom:1px solid var(--line)}
+.sheet-head-actions{display:flex;align-items:center;gap:7px}
 .sheet-head h2{margin:2px 0 0;font-size:20px;letter-spacing:-.035em}
 .sheet-body{overflow:auto;padding:16px 16px 28px}
 .form-section{margin-bottom:18px}

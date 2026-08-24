@@ -32,6 +32,7 @@
     sheetTitle: document.getElementById('sheetTitle'),
     sheetEyebrow: document.getElementById('sheetEyebrow'),
     sheetBody: document.getElementById('sheetBody'),
+    sheetBackBtn: document.getElementById('sheetBackBtn'),
     sheetCloseBtn: document.getElementById('sheetCloseBtn'),
     toast: document.getElementById('toast')
   };
@@ -47,6 +48,7 @@
   let remoteReady = false;
   let pendingRemotePayload = null;
   let syncInFlight = false;
+  let sheetBackAction = null;
 
   void boot();
 
@@ -108,6 +110,7 @@
     els.settingsBtn.addEventListener('click', openSettingsSheet);
     els.privacyQuickBtn.addEventListener('click', showPrivateInfo);
     els.sheetCloseBtn.addEventListener('click', closeSheet);
+    els.sheetBackBtn.addEventListener('click',()=>{const action=sheetBackAction; if(action)action();});
     els.backdrop.addEventListener('click', closeSheet);
     document.addEventListener('keydown', event => { if (event.key === 'Escape') closeSheet(); });
     const handleSystemThemeChange = () => {
@@ -253,10 +256,10 @@
     }
   }
 
-  async function issueInvite(){
+  async function issueInvite(backAction=null){
     try {
       const result = await apiRequest('/api/invites', {method:'POST', body:JSON.stringify({displayName:'배우자'})});
-      openSheet('배우자 초대코드','10분 동안 1회 사용',`<div class="subtle-box"><strong style="display:block;font-size:25px;letter-spacing:.08em;text-align:center;margin:10px 0 16px">${esc(result.inviteCode)}</strong><p style="margin:0;color:var(--text-2);font-size:12px;line-height:1.5;text-align:center">이 코드를 배우자 휴대폰의 전용 접속 화면에 입력해주세요.<br>만료 시 새 코드를 발급하면 이전 코드는 사용할 수 없습니다.</p></div><div style="height:12px"></div><button class="primary-button" id="copyInviteCode">초대코드 복사</button>`);
+      openSheet('배우자 초대코드','10분 동안 1회 사용',`<div class="subtle-box"><strong style="display:block;font-size:25px;letter-spacing:.08em;text-align:center;margin:10px 0 16px">${esc(result.inviteCode)}</strong><p style="margin:0;color:var(--text-2);font-size:12px;line-height:1.5;text-align:center">이 코드를 배우자 휴대폰의 전용 접속 화면에 입력해주세요.<br>만료 시 새 코드를 발급하면 이전 코드는 사용할 수 없습니다.</p></div><div style="height:12px"></div><button class="primary-button" id="copyInviteCode">초대코드 복사</button>`,backAction);
       document.getElementById('copyInviteCode').addEventListener('click', async event => {
         try { await navigator.clipboard.writeText(result.inviteCode); event.currentTarget.textContent='복사 완료'; showToast('초대코드를 복사했습니다.'); }
         catch (_) { window.prompt('초대코드를 복사하세요.', result.inviteCode); }
@@ -605,12 +608,12 @@
 
   function openTransactionDetail(id){ openTransactionSheet(id); }
 
-  function openBudgetSheet(){
-    openSheet('예산 설정','이번 달',`<form id="budgetForm"><div class="form-section"><label class="form-label">전체 생활예산</label><input id="monthlyBudget" class="input" inputmode="numeric" value="${state.budget.monthly||''}" placeholder="2000000"></div><div class="form-section"><div class="form-label"><span>카테고리별 예산</span><span>필요한 것만</span></div>${state.expenseCategories.map(c=>`<div class="setting-row" style="padding-left:0;padding-right:0"><strong style="font-size:12px">${esc(c)}</strong><input class="input cat-budget" data-cat="${escAttr(c)}" inputmode="numeric" value="${state.budget.byCategory[c]||''}" placeholder="설정 안 함" style="width:150px;min-height:40px;text-align:right"></div>`).join('')}</div><button class="primary-button">저장</button></form>`);
-    document.getElementById('budgetForm').addEventListener('submit',e=>{e.preventDefault();state.budget.monthly=Number(document.getElementById('monthlyBudget').value)||0;const next={};els.sheetBody.querySelectorAll('.cat-budget').forEach(i=>{const v=Number(i.value)||0;if(v>0)next[i.dataset.cat]=v;});state.budget.byCategory=next;save();closeSheet();render();showToast('예산을 저장했습니다.');});
+  function openBudgetSheet(backAction=null){
+    openSheet('예산 설정','이번 달',`<form id="budgetForm"><div class="form-section"><label class="form-label">전체 생활예산</label><input id="monthlyBudget" class="input" inputmode="numeric" value="${state.budget.monthly||''}" placeholder="2000000"></div><div class="form-section"><div class="form-label"><span>카테고리별 예산</span><span>필요한 것만</span></div>${state.expenseCategories.map(c=>`<div class="setting-row" style="padding-left:0;padding-right:0"><strong style="font-size:12px">${esc(c)}</strong><input class="input cat-budget" data-cat="${escAttr(c)}" inputmode="numeric" value="${state.budget.byCategory[c]||''}" placeholder="설정 안 함" style="width:150px;min-height:40px;text-align:right"></div>`).join('')}</div><button class="primary-button">저장</button></form>`,backAction);
+    document.getElementById('budgetForm').addEventListener('submit',e=>{e.preventDefault();state.budget.monthly=Number(document.getElementById('monthlyBudget').value)||0;const next={};els.sheetBody.querySelectorAll('.cat-budget').forEach(i=>{const v=Number(i.value)||0;if(v>0)next[i.dataset.cat]=v;});state.budget.byCategory=next;save();render();if(backAction)backAction();else closeSheet();showToast('예산을 저장했습니다.');});
   }
 
-  function openRecurringSheet(){
+  function openRecurringSheet(backAction=null){
     const entries=state.recurring;
     openSheet('고정지출 관리','매월 자동 반영',`
       <div class="subtle-box" style="margin-bottom:12px">이자, 학원비, 보험료처럼 매월 같은 금액이 나가는 항목을 등록하세요. 등록한 날짜가 되면 해당 월 내역으로 자동 기록됩니다.</div>
@@ -625,17 +628,17 @@
           <span class="row-amount ${r.type}">${sign}${fmtMoney(r.amount)}</span>
           <button class="icon-button" data-recurring-delete="${escAttr(r.id)}" aria-label="${escAttr(r.note||r.category)} 삭제" style="width:34px;height:34px"><i class="ph ph-trash"></i></button>
         </div>`;
-      }).join('')}</div>`:empty('arrows-clockwise','등록된 고정지출이 없습니다','위의 추가 버튼에서 이자·학원비 등을 등록해보세요.')}`);
-    document.getElementById('addRecurringBtn').addEventListener('click',()=>openRecurringEditSheet());
-    els.sheetBody.querySelectorAll('[data-recurring-edit]').forEach(btn=>btn.addEventListener('click',()=>openRecurringEditSheet(btn.dataset.recurringEdit)));
-    els.sheetBody.querySelectorAll('[data-recurring-delete]').forEach(btn=>btn.addEventListener('click',()=>{state.recurring=state.recurring.filter(r=>r.id!==btn.dataset.recurringDelete);save();openRecurringSheet();showToast('반복내역을 삭제했습니다.');}));
+        }).join('')}</div>`:empty('arrows-clockwise','등록된 고정지출이 없습니다','위의 추가 버튼에서 이자·학원비 등을 등록해보세요.')}`,backAction);
+    document.getElementById('addRecurringBtn').addEventListener('click',()=>openRecurringEditSheet(null,()=>openRecurringSheet(backAction)));
+    els.sheetBody.querySelectorAll('[data-recurring-edit]').forEach(btn=>btn.addEventListener('click',()=>openRecurringEditSheet(btn.dataset.recurringEdit,()=>openRecurringSheet(backAction))));
+    els.sheetBody.querySelectorAll('[data-recurring-delete]').forEach(btn=>btn.addEventListener('click',()=>{state.recurring=state.recurring.filter(r=>r.id!==btn.dataset.recurringDelete);save();openRecurringSheet(backAction);showToast('반복내역을 삭제했습니다.');}));
   }
 
-  function openRecurringEditSheet(existingId=null){
+  function openRecurringEditSheet(existingId=null,backAction=null){
     const existing=existingId?state.recurring.find(item=>item.id===existingId):null;
     const data=existing||{type:'expense',amount:'',category:state.expenseCategories.includes('주거')?'주거':state.expenseCategories[0],note:'',paymentMethod:state.paymentMethods[0],day:1,autoPost:true,shared:state.profile.defaultShared!==false,active:true};
-    openSheet(existing?'고정지출 수정':'고정지출 추가','매월 자동 반영',recurringForm(data,!!existing));
-    wireRecurringForm(existingId);
+    openSheet(existing?'고정지출 수정':'고정지출 추가','매월 자동 반영',recurringForm(data,!!existing),backAction);
+    wireRecurringForm(existingId,backAction);
   }
 
   function recurringForm(data,isEdit){
@@ -653,7 +656,7 @@
     </form>`;
   }
 
-  function wireRecurringForm(existingId){
+  function wireRecurringForm(existingId,backAction=null){
     const existing=existingId?state.recurring.find(item=>item.id===existingId):null;
     let type=existing?.type||'expense';
     els.sheetBody.querySelectorAll('[data-recurring-type]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -663,10 +666,10 @@
       const list=categoriesForType(type);
       category.innerHTML=list.map(item=>`<option value="${escAttr(item)}">${esc(item)}</option>`).join('');
     }));
-    document.getElementById('recurringCancel').addEventListener('click',()=>existingId?openRecurringSheet():closeSheet());
+    document.getElementById('recurringCancel').addEventListener('click',()=>backAction?backAction():closeSheet());
     document.getElementById('recurringDelete')?.addEventListener('click',()=>{
       state.recurring=state.recurring.filter(item=>item.id!==existingId);
-      save();closeSheet();render();showToast('고정지출을 삭제했습니다.');
+      save();render();if(backAction)backAction();else closeSheet();showToast('고정지출을 삭제했습니다.');
     });
     document.getElementById('recurringForm').addEventListener('submit',event=>{
       event.preventDefault();
@@ -683,7 +686,7 @@
       };
       if(existingId){const index=state.recurring.findIndex(entry=>entry.id===existingId);if(index>=0)state.recurring[index]=item;}
       else state.recurring.push(item);
-      save();processRecurring();closeSheet();render();showToast(existingId?'고정지출을 수정했습니다.':'고정지출을 등록했습니다.');
+      save();processRecurring();render();if(backAction)backAction();else closeSheet();showToast(existingId?'고정지출을 수정했습니다.':'고정지출을 등록했습니다.');
     });
   }
 
@@ -715,36 +718,36 @@
     els.sheetBody.querySelectorAll('[data-theme]').forEach(btn=>btn.addEventListener('click',()=>{state.preferences.theme=btn.dataset.theme;save();applyTheme();openSettingsSheet();}));
     els.sheetBody.querySelectorAll('[data-accent]').forEach(btn=>btn.addEventListener('click',()=>{state.preferences.accent=btn.dataset.accent;save();applyTheme();openSettingsSheet();}));
     document.getElementById('customAccent')?.addEventListener('input',e=>{state.preferences.customAccent=e.target.value;state.preferences.accent='custom';save();applyTheme();});
-    document.getElementById('budgetSetting').addEventListener('click',openBudgetSheet);
-    document.getElementById('recurringSetting').addEventListener('click',openRecurringSheet);
-    document.getElementById('categorySetting').addEventListener('click',openCategorySheet);
-    document.getElementById('paymentSetting').addEventListener('click',openPaymentSheet);
-    document.getElementById('clearSample')?.addEventListener('click',()=>{state.transactions=[];state.metadata.sample=false;state.metadata.recurringPosted={};save();closeSheet();render();showToast('예시 내역을 지웠습니다.');});
+    document.getElementById('budgetSetting').addEventListener('click',()=>openBudgetSheet(openSettingsSheet));
+    document.getElementById('recurringSetting').addEventListener('click',()=>openRecurringSheet(openSettingsSheet));
+    document.getElementById('categorySetting').addEventListener('click',()=>openCategorySheet('expense',openSettingsSheet));
+    document.getElementById('paymentSetting').addEventListener('click',()=>openPaymentSheet(openSettingsSheet));
+    document.getElementById('clearSample')?.addEventListener('click',()=>{state.transactions=[];state.metadata.sample=false;state.metadata.recurringPosted={};save();render();openSettingsSheet();showToast('예시 내역을 지웠습니다.');});
     document.getElementById('exportData').addEventListener('click',exportData);
-    document.getElementById('invitePartnerBtn')?.addEventListener('click',issueInvite);
+    document.getElementById('invitePartnerBtn')?.addEventListener('click',()=>issueInvite(openSettingsSheet));
     document.getElementById('logoutBtn').addEventListener('click',logout);
   }
 
-  function openCategorySheet(kind='expense'){
+  function openCategorySheet(kind='expense',backAction=null){
     const isIncome=kind==='income';
     const list=isIncome?state.incomeCategories:state.expenseCategories;
     const label=isIncome?'수입':'지출';
     openSheet('카테고리','수입·지출 별도 관리',`
       <div class="form-section"><div class="segmented"><button type="button" data-cat-kind="expense" class="${!isIncome?'active':''}">지출</button><button type="button" data-cat-kind="income" class="${isIncome?'active':''}">수입</button></div></div>
       <div class="list" style="margin-bottom:12px">${list.map(c=>`<div class="setting-row"><strong style="font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(c)}</strong><span style="display:flex;gap:6px"><button class="icon-button" data-cat-rename="${escAttr(c)}" aria-label="이름 변경" style="width:34px;height:34px"><i class="ph ph-pencil-simple"></i></button><button class="icon-button" data-cat-delete="${escAttr(c)}" aria-label="삭제" style="width:34px;height:34px"><i class="ph ph-trash"></i></button></span></div>`).join('')}</div>
-      <div class="inline-grid" style="grid-template-columns:minmax(0,1fr) auto"><input id="newCategory" class="input" placeholder="새 ${label} 카테고리"><button id="newCategoryBtn" class="primary-button" style="width:auto">추가</button></div>`);
+      <div class="inline-grid" style="grid-template-columns:minmax(0,1fr) auto"><input id="newCategory" class="input" placeholder="새 ${label} 카테고리"><button id="newCategoryBtn" class="primary-button" style="width:auto">추가</button></div>`,backAction);
 
-    els.sheetBody.querySelectorAll('[data-cat-kind]').forEach(btn=>btn.addEventListener('click',()=>openCategorySheet(btn.dataset.catKind)));
+    els.sheetBody.querySelectorAll('[data-cat-kind]').forEach(btn=>btn.addEventListener('click',()=>openCategorySheet(btn.dataset.catKind,backAction)));
     els.sheetBody.querySelectorAll('[data-cat-delete]').forEach(btn=>btn.addEventListener('click',()=>{
       if(list.length<=1){showToast(`${label} 카테고리는 하나 이상 필요합니다.`);return;}
       const name=btn.dataset.catDelete;
       const idx=list.indexOf(name); if(idx>=0)list.splice(idx,1);
       if(!isIncome) delete state.budget.byCategory[name];
-      save();openCategorySheet(kind);
+      save();openCategorySheet(kind,backAction);
     }));
     els.sheetBody.querySelectorAll('[data-cat-rename]').forEach(btn=>btn.addEventListener('click',()=>{
       const oldName=btn.dataset.catRename;
-      openMiniAdd(`${label} 카테고리 이름 변경`,'새 이름',newName=>{
+        openMiniAdd(`${label} 카테고리 이름 변경`,'새 이름',newName=>{
         newName=newName.trim();
         if(!newName||newName===oldName)return;
         if(list.includes(newName)){showToast('같은 이름의 카테고리가 있습니다.');return;}
@@ -755,20 +758,20 @@
           state.budget.byCategory[newName]=state.budget.byCategory[oldName];
           delete state.budget.byCategory[oldName];
         }
-        save();openCategorySheet(kind);showToast('카테고리 이름을 변경했습니다.');
-      });
+        save();openCategorySheet(kind,backAction);showToast('카테고리 이름을 변경했습니다.');
+      },()=>openCategorySheet(kind,backAction));
       const input=document.getElementById('miniValue'); if(input)input.value=oldName;
     }));
     document.getElementById('newCategoryBtn').addEventListener('click',()=>{
       const name=document.getElementById('newCategory').value.trim();
-      if(name&&!list.includes(name)){list.push(name);save();openCategorySheet(kind);}
+      if(name&&!list.includes(name)){list.push(name);save();openCategorySheet(kind,backAction);}
     });
   }
 
-  function openPaymentSheet(){
-    openSheet('결제수단','직접 이름 지정',`<div class="list" style="margin-bottom:12px">${state.paymentMethods.map(p=>`<div class="setting-row"><strong style="font-size:13px">${esc(p)}</strong><button class="icon-button" data-pay-delete="${escAttr(p)}" style="width:34px;height:34px"><i class="ph ph-trash"></i></button></div>`).join('')}</div><div class="inline-grid" style="grid-template-columns:1fr auto"><input id="newPayment" class="input" placeholder="예: 가족카드"><button id="newPaymentBtn" class="primary-button" style="width:auto">추가</button></div>`);
-    els.sheetBody.querySelectorAll('[data-pay-delete]').forEach(btn=>btn.addEventListener('click',()=>{if(state.paymentMethods.length<=1){showToast('결제수단은 하나 이상 필요합니다.');return;}state.paymentMethods=state.paymentMethods.filter(p=>p!==btn.dataset.payDelete);save();openPaymentSheet();}));
-    document.getElementById('newPaymentBtn').addEventListener('click',()=>{const name=document.getElementById('newPayment').value.trim();if(name&&!state.paymentMethods.includes(name)){state.paymentMethods.push(name);save();openPaymentSheet();}});
+  function openPaymentSheet(backAction=null){
+    openSheet('결제수단','직접 이름 지정',`<div class="list" style="margin-bottom:12px">${state.paymentMethods.map(p=>`<div class="setting-row"><strong style="font-size:13px">${esc(p)}</strong><button class="icon-button" data-pay-delete="${escAttr(p)}" style="width:34px;height:34px"><i class="ph ph-trash"></i></button></div>`).join('')}</div><div class="inline-grid" style="grid-template-columns:1fr auto"><input id="newPayment" class="input" placeholder="예: 가족카드"><button id="newPaymentBtn" class="primary-button" style="width:auto">추가</button></div>`,backAction);
+    els.sheetBody.querySelectorAll('[data-pay-delete]').forEach(btn=>btn.addEventListener('click',()=>{if(state.paymentMethods.length<=1){showToast('결제수단은 하나 이상 필요합니다.');return;}state.paymentMethods=state.paymentMethods.filter(p=>p!==btn.dataset.payDelete);save();openPaymentSheet(backAction);}));
+    document.getElementById('newPaymentBtn').addEventListener('click',()=>{const name=document.getElementById('newPayment').value.trim();if(name&&!state.paymentMethods.includes(name)){state.paymentMethods.push(name);save();openPaymentSheet(backAction);}});
   }
 
   function openVehicleSheet(){
@@ -816,8 +819,8 @@
     els.sheetBody.querySelectorAll('[data-txid]').forEach(btn=>btn.addEventListener('click',()=>openTransactionSheet(btn.dataset.txid)));
   }
 
-  function openMiniAdd(title,placeholder,onSave){
-    openSheet(title,'직접 추가',`<form id="miniForm"><div class="form-section"><input id="miniValue" class="input" placeholder="${escAttr(placeholder)}" autofocus></div><button class="primary-button">추가</button></form>`);
+  function openMiniAdd(title,placeholder,onSave,backAction=null){
+    openSheet(title,'직접 추가',`<form id="miniForm"><div class="form-section"><input id="miniValue" class="input" placeholder="${escAttr(placeholder)}" autofocus></div><button class="primary-button">추가</button></form>`,backAction);
     document.getElementById('miniForm').addEventListener('submit',e=>{e.preventDefault();const value=document.getElementById('miniValue').value.trim();if(value)onSave(value);});
   }
 
@@ -852,8 +855,18 @@
   function hexRgb(hex){hex=hex.replace('#','');if(hex.length===3)hex=hex.split('').map(x=>x+x).join('');return [0,2,4].map(i=>parseInt(hex.slice(i,i+2),16));}
   function contrastText(hex){const [r,g,b]=hexRgb(hex).map(v=>v/255);const lum=.2126*r+.7152*g+.0722*b;return lum>.57?'#101416':'#ffffff';}
 
-  function openSheet(title,eyebrow,html){els.sheetTitle.textContent=title;els.sheetEyebrow.textContent=eyebrow||'';els.sheetBody.innerHTML=html;els.sheet.hidden=false;els.backdrop.hidden=false;document.body.style.overflow='hidden';setTimeout(()=>els.sheetBody.querySelector('[autofocus]')?.focus(),30);}
-  function closeSheet(){els.sheet.hidden=true;els.backdrop.hidden=true;els.sheetBody.innerHTML='';document.body.style.overflow='';}
+  function openSheet(title,eyebrow,html,backAction=null){
+    sheetBackAction=typeof backAction==='function'?backAction:null;
+    els.sheetTitle.textContent=title;
+    els.sheetEyebrow.textContent=eyebrow||'';
+    els.sheetBackBtn.hidden=!sheetBackAction;
+    els.sheetBody.innerHTML=html;
+    els.sheet.hidden=false;
+    els.backdrop.hidden=false;
+    document.body.style.overflow='hidden';
+    setTimeout(()=>els.sheetBody.querySelector('[autofocus]')?.focus(),30);
+  }
+  function closeSheet(){sheetBackAction=null;els.sheetBackBtn.hidden=true;els.sheet.hidden=true;els.backdrop.hidden=true;els.sheetBody.innerHTML='';document.body.style.overflow='';}
   function showToast(msg){clearTimeout(toastTimer);els.toast.textContent=msg;els.toast.classList.add('show');toastTimer=setTimeout(()=>els.toast.classList.remove('show'),1800);}
   function empty(icon,title,desc){return `<div class="card empty-state"><i class="ph-duotone ph-${icon}"></i><strong>${title}</strong><p>${desc}</p></div>`;}
   function esc(v=''){return String(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
