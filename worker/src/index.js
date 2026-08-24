@@ -96,6 +96,11 @@ async function handleAssetRequest(request, env) {
 
   const user = await authenticateDevice(request, env);
   if (!user) {
+    const path = new URL(request.url).pathname;
+    if (path === '/' || path === '/index.html' || path === '/access' || path === '/access.html') {
+      const accessUrl = new URL('/access', request.url);
+      return await env.ASSETS.fetch(new Request(accessUrl, request));
+    }
     return new Response('인증이 필요합니다.', {
       status: 401,
       headers: {

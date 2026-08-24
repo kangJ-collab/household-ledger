@@ -253,6 +253,19 @@
     }
   }
 
+  async function issueInvite(){
+    try {
+      const result = await apiRequest('/api/invites', {method:'POST', body:JSON.stringify({displayName:'배우자'})});
+      openSheet('배우자 초대코드','10분 동안 1회 사용',`<div class="subtle-box"><strong style="display:block;font-size:25px;letter-spacing:.08em;text-align:center;margin:10px 0 16px">${esc(result.inviteCode)}</strong><p style="margin:0;color:var(--text-2);font-size:12px;line-height:1.5;text-align:center">이 코드를 배우자 휴대폰의 전용 접속 화면에 입력해주세요.<br>만료 시 새 코드를 발급하면 이전 코드는 사용할 수 없습니다.</p></div><div style="height:12px"></div><button class="primary-button" id="copyInviteCode">초대코드 복사</button>`);
+      document.getElementById('copyInviteCode').addEventListener('click', async event => {
+        try { await navigator.clipboard.writeText(result.inviteCode); event.currentTarget.textContent='복사 완료'; showToast('초대코드를 복사했습니다.'); }
+        catch (_) { window.prompt('초대코드를 복사하세요.', result.inviteCode); }
+      });
+    } catch (error) {
+      showToast(error?.message || '초대코드를 발급하지 못했습니다.');
+    }
+  }
+
   function uid(){ return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4); }
   function toISO(date){
     const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0');
@@ -605,7 +618,7 @@
       <div class="settings-group"><p class="settings-title">공동 사용</p><div class="settings-card">
         ${publicDemoMode
           ? `<div class="setting-row"><span class="setting-copy"><strong>공개 계산용 모드</strong><span>이 기기의 브라우저에만 저장됩니다.</span></span><span class="badge accent">로컬</span></div><button class="setting-row" id="logoutBtn" style="width:100%;border:0;background:transparent;text-align:left"><span class="setting-copy"><strong>계산 데이터 초기화</strong><span>이 기기에 저장된 계산 내역을 지웁니다.</span></span><i class="ph ph-trash"></i></button>`
-          : `<div class="setting-row"><span class="setting-copy"><strong>${esc(currentUser?.displayName||'사용자')}</strong><span>부부 전용 계정 · ${memberRole}</span></span><span class="badge accent">로그인됨</span></div><button class="setting-row" id="logoutBtn" style="width:100%;border:0;background:transparent;text-align:left"><span class="setting-copy"><strong>로그아웃</strong><span>이 기기에서 가계부 연결을 닫습니다.</span></span><i class="ph ph-sign-out"></i></button>`}
+          : `<div class="setting-row"><span class="setting-copy"><strong>${esc(currentUser?.displayName||'사용자')}</strong><span>부부 전용 계정 · ${memberRole}</span></span><span class="badge accent">로그인됨</span></div>${currentUser?.role==='OWNER'?'<button class="setting-row" id="invitePartnerBtn" style="width:100%;border:0;background:transparent;text-align:left"><span class="setting-copy"><strong>배우자 초대코드 발급</strong><span>10분 동안 한 번 사용할 수 있는 코드입니다.</span></span><i class="ph ph-user-plus"></i></button>':''}<button class="setting-row" id="logoutBtn" style="width:100%;border:0;background:transparent;text-align:left"><span class="setting-copy"><strong>로그아웃</strong><span>이 기기에서 가계부 연결을 닫습니다.</span></span><i class="ph ph-sign-out"></i></button>`}
       </div></div>`);
     els.sheetBody.querySelectorAll('[data-mode]').forEach(btn=>btn.addEventListener('click',()=>{state.profile.mode=btn.dataset.mode;state.profile.defaultShared=true;save();openSettingsSheet();render();}));
     els.sheetBody.querySelectorAll('[data-style]').forEach(btn=>btn.addEventListener('click',()=>{state.preferences.style=btn.dataset.style;save();applyTheme();openSettingsSheet();}));
@@ -617,6 +630,7 @@
     document.getElementById('paymentSetting').addEventListener('click',openPaymentSheet);
     document.getElementById('clearSample')?.addEventListener('click',()=>{state.transactions=[];state.metadata.sample=false;state.metadata.recurringPosted={};save();closeSheet();render();showToast('예시 내역을 지웠습니다.');});
     document.getElementById('exportData').addEventListener('click',exportData);
+    document.getElementById('invitePartnerBtn')?.addEventListener('click',issueInvite);
     document.getElementById('logoutBtn').addEventListener('click',logout);
   }
 
