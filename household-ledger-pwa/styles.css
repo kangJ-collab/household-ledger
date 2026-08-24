@@ -115,7 +115,7 @@ html[data-theme="rose"]{
 .nav-item{height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--text-2);font-size:11px;font-weight:700}
 .nav-item i{font-size:23px}
 .nav-item.active{color:var(--accent-strong)}
-.nav-item.active i{transform:translateY(-1px)}
+.nav-item.active i{transform:none}
 .nav-add{
   width:54px;height:54px;border-radius:18px;background:var(--accent);color:var(--accent-contrast);
   display:grid;place-items:center;font-size:26px;margin:0 auto;box-shadow:0 8px 22px color-mix(in srgb,var(--accent) 28%, transparent)
@@ -330,10 +330,11 @@ html[data-style="classic"] .pill,html[data-style="classic"] .chip{border-radius:
 
 /* Bundled SVG icon renderer: no external icon-font/CDN dependency. */
 i.ph,i.ph-duotone{
-  display:inline-grid;place-items:center;width:1em;height:1em;
-  font-family:inherit!important;font-style:normal;line-height:1;vertical-align:-.12em;
+  display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+  width:1em;height:1em;margin:0;padding:0;
+  font-family:inherit!important;font-style:normal;line-height:0;vertical-align:middle;
 }
 i.ph svg,i.ph-duotone svg{
-  width:1em;height:1em;display:block;fill:none;stroke:currentColor;stroke-width:1.8;
+  width:100%;height:100%;display:block;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;
   stroke-linecap:round;stroke-linejoin:round;overflow:visible;
 }
