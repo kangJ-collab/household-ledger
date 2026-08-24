@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "household-ledger-private",
+  "main": "./worker/src/index.js",
+  "compatibility_date": "2026-08-24",
+  "assets": {
+    "directory": "./household-ledger-pwa",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "secrets": {
+    "required": ["HOUSEHOLD_ADMIN_KEY"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "household-ledger",
+      "database_id": "0512fff3-4344-49d7-992f-46fdc45e2154",
+      "migrations_dir": "./worker/migrations"
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": { "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.05 }
+  }
+}

@@ -8,4 +8,7 @@ Desktop.ini
 *.zip
 *.tmp
 *.temp
-
+node_modules/
+.wrangler/
+.dev.vars
+worker/.dev.vars

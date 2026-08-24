@@ -15,6 +15,8 @@
   const currency = new Intl.NumberFormat('ko-KR');
   const today = new Date();
   const isoToday = toISO(today);
+  const publicDemoHost = 'kangj-collab.github.io';
+  const publicDemoMode = window.location.hostname === publicDemoHost;
   const systemThemeQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
   const els = {
@@ -34,41 +36,87 @@
     toast: document.getElementById('toast')
   };
 
-  let state = loadState();
+  let state = null;
   let route = 'home';
   let monthCursor = new Date(today.getFullYear(), today.getMonth(), 1);
   let txView = 'list';
   let selectedCalendarDate = isoToday;
   let toastTimer = null;
+  let currentUser = null;
+  let remoteRevision = 0;
+  let remoteReady = false;
+  let pendingRemotePayload = null;
+  let syncInFlight = false;
 
-  normalizeState();
-  save();
-  applyTheme();
-  processRecurring();
-  render();
+  void boot();
 
-  els.navItems.forEach(btn => btn.addEventListener('click', () => {
-    route = btn.dataset.route;
-    render();
-    window.scrollTo({top:0, behavior:'smooth'});
-  }));
-  els.quickAddBtn.addEventListener('click', () => openTransactionSheet());
-  els.settingsBtn.addEventListener('click', openSettingsSheet);
-  els.privacyQuickBtn.addEventListener('click', showPrivateInfo);
-  els.sheetCloseBtn.addEventListener('click', closeSheet);
-  els.backdrop.addEventListener('click', closeSheet);
-  document.addEventListener('keydown', event => { if (event.key === 'Escape') closeSheet(); });
-
-  const handleSystemThemeChange = () => {
-    if ((state.preferences?.theme || 'system') === 'system') applyTheme();
-  };
-  if (systemThemeQuery) {
-    if (typeof systemThemeQuery.addEventListener === 'function') systemThemeQuery.addEventListener('change', handleSystemThemeChange);
-    else if (typeof systemThemeQuery.addListener === 'function') systemThemeQuery.addListener(handleSystemThemeChange);
+  async function boot(){
+    try {
+      if (publicDemoMode) {
+        startLocalDemo();
+        return;
+      }
+      const session = await apiRequest('/api/session');
+      if (!session.authenticated) {
+        localStorage.removeItem(STORAGE_KEY);
+        window.location.replace('./');
+        return;
+      }
+      currentUser = session.user;
+      const remote = await apiRequest('/api/state');
+      state = remote.state || {};
+      remoteRevision = Number(remote.revision) || 1;
+      normalizeState();
+      remoteReady = true;
+      save(false);
+      processRecurring();
+      save();
+      startApp();
+    } catch (error) {
+      if (error?.status === 401) {
+        window.location.replace('./');
+        return;
+      }
+      document.body.innerHTML = `<main class="auth-shell"><section class="auth-card"><p class="eyebrow">우리집 가계부</p><h1>연결할 수 없습니다</h1><p class="auth-copy">잠시 후 다시 열어주세요.</p><button class="primary-button" onclick="location.reload()">다시 시도</button></section></main>`;
+    }
   }
 
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+  function startLocalDemo(){
+    state = loadState();
+    normalizeState();
+    save(false);
+    processRecurring();
+    startApp();
+  }
+
+  function startApp(){
+    applyTheme();
+    bindAppEvents();
+    render();
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}), {once:true});
+    }
+  }
+
+  function bindAppEvents(){
+    els.navItems.forEach(btn => btn.addEventListener('click', () => {
+      route = btn.dataset.route;
+      render();
+      window.scrollTo({top:0, behavior:'smooth'});
+    }));
+    els.quickAddBtn.addEventListener('click', () => openTransactionSheet());
+    els.settingsBtn.addEventListener('click', openSettingsSheet);
+    els.privacyQuickBtn.addEventListener('click', showPrivateInfo);
+    els.sheetCloseBtn.addEventListener('click', closeSheet);
+    els.backdrop.addEventListener('click', closeSheet);
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') closeSheet(); });
+    const handleSystemThemeChange = () => {
+      if ((state.preferences?.theme || 'system') === 'system') applyTheme();
+    };
+    if (systemThemeQuery) {
+      if (typeof systemThemeQuery.addEventListener === 'function') systemThemeQuery.addEventListener('change', handleSystemThemeChange);
+      else if (typeof systemThemeQuery.addListener === 'function') systemThemeQuery.addListener(handleSystemThemeChange);
+    }
   }
 
   function defaultState(){
@@ -121,7 +169,7 @@
   }
 
   function normalizeState(){
-    state.profile ||= {householdName:'우리집',mode:'solo',defaultShared:true,memberName:'나',partnerName:'배우자'};
+    state.profile ||= {householdName:'우리집',mode:'couple',defaultShared:true,memberName:'나',partnerName:'배우자'};
     state.preferences ||= {style:'compact',theme:'system',accent:'slate',customAccent:'#315d73'};
     state.budget ||= {monthly:0,byCategory:{}};
     const legacyCategories=Array.isArray(state.categories)?state.categories:null;
@@ -141,8 +189,71 @@
     state.metadata.recurringPosted ||= {};
   }
 
-  function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-  function uid(){ return Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4); }
+  async function apiRequest(path, options={}){
+    const response = await fetch(path, {credentials:'same-origin', cache:'no-store', ...options, headers:{'content-type':'application/json', ...(options.headers||{})}});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(data.error || `요청 실패 (${response.status})`);
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+    return data;
+  }
+
+  function save(sync=true){
+    if (!state) return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (!sync || !remoteReady) return;
+    pendingRemotePayload = {baseRevision:remoteRevision, state:JSON.parse(JSON.stringify(state))};
+    void flushRemoteState();
+  }
+
+  async function flushRemoteState(){
+    if (syncInFlight || !pendingRemotePayload) return;
+    const payload = pendingRemotePayload;
+    pendingRemotePayload = null;
+    syncInFlight = true;
+    try {
+      const result = await apiRequest('/api/state', {method:'PUT', body:JSON.stringify(payload)});
+      remoteRevision = Number(result.revision) || remoteRevision + 1;
+    } catch (error) {
+      if (error?.status === 401) {
+        window.location.replace('./');
+        return;
+      }
+      if (error?.status === 409 && error.data?.state) {
+        state = error.data.state;
+        remoteRevision = Number(error.data.revision) || remoteRevision;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        render();
+        showToast('다른 기기에서 먼저 수정되어 최신 내용으로 맞췄습니다.');
+      } else {
+        showToast('서버 저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      }
+    } finally {
+      syncInFlight = false;
+      if (pendingRemotePayload) {
+        pendingRemotePayload.baseRevision = remoteRevision;
+        void flushRemoteState();
+      }
+    }
+  }
+
+  async function logout(){
+    if (publicDemoMode) {
+      localStorage.removeItem(STORAGE_KEY);
+      window.location.reload();
+      return;
+    }
+    try { await apiRequest('/api/logout', {method:'POST'}); }
+    finally {
+      localStorage.removeItem(STORAGE_KEY);
+      window.location.replace('./');
+    }
+  }
+
+  function uid(){ return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4); }
   function toISO(date){
     const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0');
     return `${y}-${m}-${d}`;
@@ -476,6 +587,7 @@
 
   function openSettingsSheet(){
     const pref=state.preferences;
+    const memberRole=currentUser?.role==='OWNER'?'관리자':'배우자';
     openSheet('설정','우리집 가계부',`
       <div class="settings-group"><p class="settings-title">사용 방식</p><div class="option-grid" id="modeOptions">${[['solo','나 혼자'],['couple','부부 공동'],['group','여러 명']].map(([v,l])=>`<button class="option ${state.profile.mode===v?'active':''}" data-mode="${v}">${l}</button>`).join('')}</div></div>
       <div class="settings-group"><p class="settings-title">화면 스타일</p><div class="option-grid" id="styleOptions">${[['default','기본'],['compact','컴팩트'],['classic','클래식']].map(([v,l])=>`<button class="option ${pref.style===v?'active':''}" data-style="${v}">${l}</button>`).join('')}</div></div>
@@ -489,6 +601,11 @@
       <div class="settings-group"><p class="settings-title">데이터</p><div class="settings-card">
         ${state.metadata.sample?`<button class="setting-row" id="clearSample" style="width:100%;border-top:0;border-left:0;border-right:0;background:transparent;text-align:left"><span class="setting-copy"><strong>예시 내역 지우기</strong><span>설정은 유지하고 거래만 비웁니다.</span></span><i class="ph ph-trash"></i></button>`:''}
         <button class="setting-row" id="exportData" style="width:100%;border:0;background:transparent;text-align:left"><span class="setting-copy"><strong>데이터 내보내기</strong><span>JSON 백업 파일</span></span><i class="ph ph-download-simple"></i></button>
+      </div></div>
+      <div class="settings-group"><p class="settings-title">공동 사용</p><div class="settings-card">
+        ${publicDemoMode
+          ? `<div class="setting-row"><span class="setting-copy"><strong>공개 계산용 모드</strong><span>이 기기의 브라우저에만 저장됩니다.</span></span><span class="badge accent">로컬</span></div><button class="setting-row" id="logoutBtn" style="width:100%;border:0;background:transparent;text-align:left"><span class="setting-copy"><strong>계산 데이터 초기화</strong><span>이 기기에 저장된 계산 내역을 지웁니다.</span></span><i class="ph ph-trash"></i></button>`
+          : `<div class="setting-row"><span class="setting-copy"><strong>${esc(currentUser?.displayName||'사용자')}</strong><span>부부 전용 계정 · ${memberRole}</span></span><span class="badge accent">로그인됨</span></div><button class="setting-row" id="logoutBtn" style="width:100%;border:0;background:transparent;text-align:left"><span class="setting-copy"><strong>로그아웃</strong><span>이 기기에서 가계부 연결을 닫습니다.</span></span><i class="ph ph-sign-out"></i></button>`}
       </div></div>`);
     els.sheetBody.querySelectorAll('[data-mode]').forEach(btn=>btn.addEventListener('click',()=>{state.profile.mode=btn.dataset.mode;state.profile.defaultShared=true;save();openSettingsSheet();render();}));
     els.sheetBody.querySelectorAll('[data-style]').forEach(btn=>btn.addEventListener('click',()=>{state.preferences.style=btn.dataset.style;save();applyTheme();openSettingsSheet();}));
@@ -500,6 +617,7 @@
     document.getElementById('paymentSetting').addEventListener('click',openPaymentSheet);
     document.getElementById('clearSample')?.addEventListener('click',()=>{state.transactions=[];state.metadata.sample=false;state.metadata.recurringPosted={};save();closeSheet();render();showToast('예시 내역을 지웠습니다.');});
     document.getElementById('exportData').addEventListener('click',exportData);
+    document.getElementById('logoutBtn').addEventListener('click',logout);
   }
 
   function openCategorySheet(kind='expense'){
