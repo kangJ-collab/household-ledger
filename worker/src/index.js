@@ -3,6 +3,7 @@ const ADMIN_KEY = 'HOUSEHOLD_ADMIN_KEY';
 const INVITE_TTL_MS = 10 * 60 * 1000;
 const SESSION_MAX_AGE = 60 * 60 * 24 * 365;
 const MAX_BODY_BYTES = 512 * 1024;
+const RATE_LIMIT_RETRY_AFTER_SECONDS = 60;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -41,6 +42,11 @@ export default {
 };
 
 async function handleApi(request, env, url) {
+  if (isCredentialAttempt(request, url)) {
+    const rateLimitResponse = await enforceCredentialRateLimit(request, env, url.pathname);
+    if (rateLimitResponse) return rateLimitResponse;
+  }
+
   if (url.pathname === '/api/health' && request.method === 'GET') {
     return json({ok: true, service: 'household-ledger'});
   }
@@ -87,6 +93,30 @@ async function handleApi(request, env, url) {
   }
 
   throw new HttpError(404, '요청한 API를 찾을 수 없습니다.');
+}
+
+function isCredentialAttempt(request, url) {
+  return request.method === 'POST' && (
+    url.pathname === '/api/admin/session' ||
+    url.pathname === '/api/invites/accept' ||
+    url.pathname === '/api/recover'
+  );
+}
+
+async function enforceCredentialRateLimit(request, env, pathname) {
+  const clientAddress = request.headers.get('cf-connecting-ip') || 'unknown-client';
+  const [clientOutcome, routeOutcome] = await Promise.all([
+    env.AUTH_CLIENT_RATE_LIMITER.limit({key: `${pathname}:${clientAddress}`}),
+    env.AUTH_ROUTE_RATE_LIMITER.limit({key: pathname})
+  ]);
+
+  if (clientOutcome.success && routeOutcome.success) return null;
+
+  return json({
+    error: '요청이 너무 많습니다. 1분 후 다시 시도해주세요.'
+  }, 429, {
+    'retry-after': String(RATE_LIMIT_RETRY_AFTER_SECONDS)
+  });
 }
 
 async function handleAssetRequest(request, env) {
@@ -630,14 +660,15 @@ function getCookie(request, name) {
   return null;
 }
 
-function json(data, status = 200) {
+function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'content-type': 'application/json; charset=UTF-8',
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
-      'referrer-policy': 'no-referrer'
+      'referrer-policy': 'no-referrer',
+      ...extraHeaders
     }
   });
 }
