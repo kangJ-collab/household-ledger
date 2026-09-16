@@ -28,7 +28,7 @@
       document.documentElement.style.colorScheme=resolved==='dark'?'dark':'light';
     })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=search-nav-v1" />
+  <link rel="stylesheet" href="./styles.css?v=context-menu-v1" />
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -87,8 +87,11 @@
     <div id="sheetBody" class="sheet-body"></div>
   </section>
 
+  <div class="context-menu-backdrop" id="contextMenuBackdrop" hidden></div>
+  <section class="transaction-context-menu" id="transactionContextMenu" role="menu" aria-label="거래 메뉴" hidden></section>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="./icons.js?v=search-nav-v1" defer></script>
-  <script src="./app.js?v=search-nav-v1" defer></script>
+  <script src="./icons.js?v=context-menu-v1" defer></script>
+  <script src="./app.js?v=context-menu-v1" defer></script>
 </body>
 </html>

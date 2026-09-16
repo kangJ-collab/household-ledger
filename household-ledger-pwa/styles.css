@@ -1578,3 +1578,218 @@ html[data-style="classic"] .calendar-card{box-shadow:none}
 /* ==================================================================
    END SEARCH NAVIGATION v1
    ================================================================== */
+
+/* ==================================================================
+   TRANSACTION CONTEXT MENU v1
+   ================================================================== */
+.list-row.transaction-row{
+  grid-template-columns:minmax(0,1fr) 44px;
+  min-height:60px;
+  gap:0;
+  padding:0;
+}
+.list-row.transaction-row.no-context{grid-template-columns:minmax(0,1fr)}
+.transaction-open,.transaction-upcoming{
+  width:100%;
+  min-width:0;
+  min-height:60px;
+  display:grid;
+  grid-template-columns:38px minmax(0,1fr) auto;
+  align-items:center;
+  gap:11px;
+  padding:10px 4px 10px 14px;
+  border:0;
+  background:transparent;
+  color:inherit;
+  text-align:left;
+}
+.transaction-upcoming{padding-right:14px}
+.transaction-open{
+  -webkit-tap-highlight-color:transparent;
+  -webkit-touch-callout:none;
+  user-select:none;
+}
+.transaction-open:active{background:color-mix(in srgb,var(--text) 5%,transparent)}
+.transaction-menu-trigger{
+  width:44px;
+  height:44px;
+  min-width:44px;
+  min-height:44px;
+  align-self:center;
+  display:grid;
+  place-items:center;
+  padding:0;
+  border:0;
+  border-radius:50%;
+  background:transparent;
+  color:var(--text-2);
+  font-size:20px;
+  -webkit-tap-highlight-color:transparent;
+}
+.transaction-menu-trigger:active{
+  background:var(--surface-2);
+  color:var(--text);
+}
+.home-group .transaction-row{padding:0}
+html[data-style="compact"] .transaction-row{padding:0}
+html[data-style="compact"] .transaction-open,
+html[data-style="compact"] .transaction-upcoming{
+  min-height:56px;
+  padding-top:8px;
+  padding-bottom:8px;
+}
+
+.context-menu-backdrop{
+  position:fixed;
+  inset:0;
+  z-index:80;
+  background:rgba(7,12,15,.16);
+  -webkit-backdrop-filter:blur(1.5px);
+  backdrop-filter:blur(1.5px);
+  touch-action:none;
+}
+.transaction-context-menu{
+  position:fixed;
+  z-index:90;
+  width:min(270px,calc(100vw - 24px));
+  max-height:calc(100dvh - 24px);
+  overflow:auto;
+  overscroll-behavior:contain;
+  border:1px solid color-mix(in srgb,var(--line) 82%,transparent);
+  border-radius:22px;
+  background:color-mix(in srgb,var(--surface) 94%,transparent);
+  box-shadow:0 20px 58px rgba(13,22,27,.22),0 2px 8px rgba(13,22,27,.08);
+  -webkit-backdrop-filter:blur(26px) saturate(1.3);
+  backdrop-filter:blur(26px) saturate(1.3);
+  color:var(--text);
+  transform-origin:top right;
+  animation:context-menu-in .16s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes context-menu-in{
+  from{opacity:0;transform:scale(.96) translateY(-4px)}
+  to{opacity:1;transform:scale(1) translateY(0)}
+}
+.context-menu-preview{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:11px;
+  padding:14px;
+  border-bottom:.5px solid var(--line);
+}
+.context-menu-preview > span:last-child{min-width:0}
+.context-menu-preview strong,
+.context-menu-preview small{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.context-menu-preview strong{
+  font-size:14px;
+  line-height:1.3;
+  font-weight:690;
+}
+.context-menu-preview small{
+  margin-top:3px;
+  color:var(--text-2);
+  font-size:10px;
+  line-height:1.35;
+}
+.context-menu-actions{padding:6px}
+.context-menu-action{
+  width:100%;
+  min-height:52px;
+  display:grid;
+  grid-template-columns:36px minmax(0,1fr);
+  align-items:center;
+  gap:7px;
+  padding:7px 9px;
+  border:0;
+  border-radius:13px;
+  background:transparent;
+  color:var(--text);
+  text-align:left;
+}
+.context-menu-action + .context-menu-action{border-top:.5px solid var(--line);border-top-left-radius:0;border-top-right-radius:0}
+.context-menu-action:active{background:var(--surface-2)}
+.context-menu-action > i{
+  width:30px;
+  height:30px;
+  display:grid;
+  place-items:center;
+  color:var(--accent-strong);
+  font-size:19px;
+}
+.context-menu-action span{min-width:0}
+.context-menu-action strong,
+.context-menu-action small{display:block}
+.context-menu-action strong{font-size:13px;line-height:1.25;font-weight:660}
+.context-menu-action small{
+  margin-top:2px;
+  overflow:hidden;
+  color:var(--text-2);
+  font-size:10px;
+  line-height:1.3;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.context-menu-action.danger,
+.context-menu-action.danger > i{color:var(--expense)}
+.context-menu-confirm{
+  padding:20px 16px 16px;
+  text-align:center;
+}
+.context-confirm-icon{
+  width:42px;
+  height:42px;
+  display:grid;
+  place-items:center;
+  margin:0 auto 11px;
+  border-radius:50%;
+  background:color-mix(in srgb,var(--expense) 12%,transparent);
+  color:var(--expense);
+  font-size:20px;
+}
+.context-menu-confirm h3{
+  margin:0;
+  font-size:16px;
+  line-height:1.3;
+  font-weight:720;
+}
+.context-menu-confirm p{
+  margin:7px 0 16px;
+  color:var(--text-2);
+  font-size:11px;
+  line-height:1.55;
+}
+.context-menu-confirm > div{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.context-menu-confirm .secondary-button,
+.context-menu-confirm .danger-button{min-height:44px}
+.transaction-open:focus-visible,
+.transaction-menu-trigger:focus-visible,
+.context-menu-action:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:-2px;
+}
+
+@media (max-width:390px){
+  .transaction-context-menu{
+    width:min(264px,calc(100vw - 20px));
+    border-radius:20px;
+  }
+  .context-menu-preview{padding:13px}
+  .context-menu-action{min-height:50px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .transaction-context-menu{animation:none}
+}
+
+/* ==================================================================
+   END TRANSACTION CONTEXT MENU v1
+   ================================================================== */

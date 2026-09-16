@@ -35,6 +35,8 @@
     sheetBody: document.getElementById('sheetBody'),
     sheetBackBtn: document.getElementById('sheetBackBtn'),
     sheetCloseBtn: document.getElementById('sheetCloseBtn'),
+    contextMenuBackdrop: document.getElementById('contextMenuBackdrop'),
+    transactionContextMenu: document.getElementById('transactionContextMenu'),
     toast: document.getElementById('toast')
   };
 
@@ -55,6 +57,9 @@
   let pendingRemotePayload = null;
   let syncInFlight = false;
   let sheetBackAction = null;
+  let contextMenuTransactionId = null;
+  let contextMenuAnchor = null;
+  let contextMenuPoint = null;
 
   void boot();
 
@@ -108,23 +113,32 @@
 
   function bindAppEvents(){
     els.navItems.forEach(btn => btn.addEventListener('click', () => {
+      closeTransactionContextMenu(false);
       transactionSearchOpen = false;
       route = btn.dataset.route;
       render();
       window.scrollTo({top:0, behavior:'smooth'});
     }));
-    els.quickAddBtn.addEventListener('click', () => openTransactionSheet());
+    els.quickAddBtn.addEventListener('click', () => {closeTransactionContextMenu(false);openTransactionSheet();});
     els.searchBtn.addEventListener('click', openTransactionSearch);
     els.settingsBtn.addEventListener('click', openSettingsSheet);
     els.privacyQuickBtn.addEventListener('click', showPrivateInfo);
     els.sheetCloseBtn.addEventListener('click', closeSheet);
     els.sheetBackBtn.addEventListener('click',()=>{const action=sheetBackAction; if(action)action();});
     els.backdrop.addEventListener('click', closeSheet);
+    els.contextMenuBackdrop.addEventListener('click',event=>{
+      event.preventDefault();
+      event.stopPropagation();
+      closeTransactionContextMenu();
+    });
     document.addEventListener('keydown', event => {
       if (event.key !== 'Escape') return;
-      if (!els.sheet.hidden) closeSheet();
+      if (!els.transactionContextMenu.hidden) closeTransactionContextMenu();
+      else if (!els.sheet.hidden) closeSheet();
       else if (transactionSearchOpen) closeTransactionSearch();
     });
+    window.addEventListener('resize',()=>closeTransactionContextMenu(false));
+    window.addEventListener('scroll',()=>closeTransactionContextMenu(false),{passive:true});
     const handleSystemThemeChange = () => {
       if ((state.preferences?.theme || 'system') === 'system') applyTheme();
     };
@@ -412,21 +426,170 @@
   function transactionRow(t,upcoming=false){
     const icon=categoryIcons[t.category]||'dots-three-circle';
     const sign=t.type==='income'?'+':'-';
-    return `<button class="list-row" data-txid="${upcoming?'':t.id}" ${upcoming?'disabled':''} style="width:100%;border-left:0;border-right:0;border-top:0;text-align:left;color:inherit;background:transparent">
+    const content=`
       <span class="row-icon"><i class="ph-duotone ph-${icon}"></i></span>
       <span class="row-main">
         <span class="row-title">${esc(t.note||t.category)}${t.shared===false?'<span class="private-dot" title="비공개"></span>':''}</span>
         <span class="row-meta">${upcoming?`${Number(t.day)}일 예정`:fmtDate(t.date)} · ${esc(t.category)}${t.paymentMethod?` · ${esc(t.paymentMethod)}`:''}</span>
       </span>
-      <span class="row-amount ${t.type}">${sign}${fmtMoney(t.amount)}</span>
-    </button>`;
+      <span class="row-amount ${t.type}">${sign}${fmtMoney(t.amount)}</span>`;
+    if(upcoming)return `<div class="list-row transaction-row no-context"><div class="transaction-upcoming">${content}</div></div>`;
+    const label=escAttr(`${t.note||t.category} ${fmtMoney(t.amount)}`);
+    return `<div class="list-row transaction-row" data-transaction-row="${escAttr(t.id)}">
+      <button type="button" class="transaction-open" data-tx-open="${escAttr(t.id)}" aria-label="${label} 열기">${content}</button>
+      <button type="button" class="transaction-menu-trigger" data-tx-menu="${escAttr(t.id)}" aria-haspopup="menu" aria-label="${label} 메뉴"><i class="ph ph-dots-three"></i></button>
+    </div>`;
   }
 
-  function wireTransactionRows(){
-    els.main.querySelectorAll('[data-txid]').forEach(btn=>{
-      if (!btn.dataset.txid) return;
-      btn.addEventListener('click',()=>openTransactionDetail(btn.dataset.txid));
+  function wireTransactionRows(root=els.main,{context=true}={}){
+    root.querySelectorAll('[data-tx-open]').forEach(btn=>{
+      btn.addEventListener('click',event=>{
+        if(btn.dataset.suppressClick==='true'){
+          event.preventDefault();
+          delete btn.dataset.suppressClick;
+          return;
+        }
+        openTransactionDetail(btn.dataset.txOpen);
+      });
+      if(context)wireTransactionLongPress(btn);
     });
+    if(!context)return;
+    root.querySelectorAll('[data-tx-menu]').forEach(btn=>btn.addEventListener('click',event=>{
+      event.stopPropagation();
+      openTransactionContextMenu(btn.dataset.txMenu,btn);
+    }));
+  }
+
+  function wireTransactionLongPress(btn){
+    let timer=null;
+    let suppressTimer=null;
+    let startX=0;
+    let startY=0;
+    const cancel=()=>{if(timer){clearTimeout(timer);timer=null;}};
+    btn.addEventListener('pointerdown',event=>{
+      if(event.pointerType!=='touch')return;
+      startX=event.clientX;
+      startY=event.clientY;
+      cancel();
+      timer=setTimeout(()=>{
+        timer=null;
+        btn.dataset.suppressClick='true';
+        clearTimeout(suppressTimer);
+        suppressTimer=setTimeout(()=>delete btn.dataset.suppressClick,800);
+        openTransactionContextMenu(btn.dataset.txOpen,btn,{x:event.clientX,y:event.clientY});
+      },520);
+    });
+    btn.addEventListener('pointermove',event=>{
+      if(Math.hypot(event.clientX-startX,event.clientY-startY)>10)cancel();
+    });
+    btn.addEventListener('pointerup',cancel);
+    btn.addEventListener('pointercancel',cancel);
+    btn.addEventListener('contextmenu',event=>{
+      event.preventDefault();
+      cancel();
+      const point=event.clientX||event.clientY?{x:event.clientX,y:event.clientY}:null;
+      openTransactionContextMenu(btn.dataset.txOpen,btn,point);
+    });
+  }
+
+  function openTransactionContextMenu(id,anchor,point=null){
+    const item=state.transactions.find(transaction=>transaction.id===id);
+    if(!item)return;
+    closeTransactionContextMenu(false);
+    contextMenuTransactionId=id;
+    contextMenuAnchor=anchor;
+    contextMenuPoint=point;
+    const icon=categoryIcons[item.category]||'dots-three-circle';
+    const privacyAction=state.profile.mode==='solo'?'':`<button type="button" class="context-menu-action" data-context-action="privacy" role="menuitem"><i class="ph ph-${item.shared===false?'users-three':'eye-slash'}"></i><span><strong>${item.shared===false?'공동 내역으로 전환':'비공개로 전환'}</strong><small>${item.shared===false?'배우자와 함께 보는 내역으로 변경':'나만 볼 수 있는 내역으로 변경'}</small></span></button>`;
+    els.transactionContextMenu.innerHTML=`
+      <div class="context-menu-preview">
+        <span class="row-icon"><i class="ph-duotone ph-${icon}"></i></span>
+        <span><strong>${esc(item.note||item.category)}</strong><small>${fmtDate(item.date)} · ${esc(item.category)} · ${fmtMoney(item.amount)}</small></span>
+      </div>
+      <div class="context-menu-actions">
+        <button type="button" class="context-menu-action" data-context-action="edit" role="menuitem"><i class="ph ph-pencil-simple"></i><span><strong>수정</strong><small>금액과 내용을 변경</small></span></button>
+        <button type="button" class="context-menu-action" data-context-action="duplicate" role="menuitem"><i class="ph ph-copy"></i><span><strong>복제</strong><small>같은 내용으로 새 내역 만들기</small></span></button>
+        ${privacyAction}
+        <button type="button" class="context-menu-action danger" data-context-action="delete" role="menuitem"><i class="ph ph-trash"></i><span><strong>삭제</strong><small>이 거래를 가계부에서 제거</small></span></button>
+      </div>`;
+    els.contextMenuBackdrop.hidden=false;
+    els.transactionContextMenu.hidden=false;
+    positionTransactionContextMenu();
+    els.transactionContextMenu.querySelectorAll('[data-context-action]').forEach(btn=>btn.addEventListener('click',()=>handleTransactionContextAction(btn.dataset.contextAction)));
+    requestAnimationFrame(()=>els.transactionContextMenu.querySelector('[data-context-action]')?.focus({preventScroll:true}));
+  }
+
+  function positionTransactionContextMenu(){
+    if(els.transactionContextMenu.hidden||!contextMenuAnchor)return;
+    const anchorRect=contextMenuAnchor.getBoundingClientRect();
+    const menuRect=els.transactionContextMenu.getBoundingClientRect();
+    const edge=12;
+    let left=contextMenuPoint?contextMenuPoint.x-28:anchorRect.right-menuRect.width;
+    let top=contextMenuPoint?contextMenuPoint.y+10:anchorRect.bottom+7;
+    left=Math.max(edge,Math.min(left,window.innerWidth-menuRect.width-edge));
+    if(top+menuRect.height>window.innerHeight-edge)top=(contextMenuPoint?contextMenuPoint.y:anchorRect.top)-menuRect.height-9;
+    top=Math.max(edge,Math.min(top,window.innerHeight-menuRect.height-edge));
+    els.transactionContextMenu.style.left=`${Math.round(left)}px`;
+    els.transactionContextMenu.style.top=`${Math.round(top)}px`;
+  }
+
+  function handleTransactionContextAction(action){
+    const id=contextMenuTransactionId;
+    const item=state.transactions.find(transaction=>transaction.id===id);
+    const fromPrivateSheet=!els.sheet.hidden&&els.sheetTitle.textContent==='비공개 내역'&&contextMenuAnchor&&els.sheetBody.contains(contextMenuAnchor);
+    if(!item){closeTransactionContextMenu(false);return;}
+    if(action==='edit'){
+      closeTransactionContextMenu(false);
+      openTransactionSheet(id);
+      return;
+    }
+    if(action==='duplicate'){
+      const draft={type:item.type,amount:item.amount,category:item.category,note:item.note,paymentMethod:item.paymentMethod,date:item.date,shared:item.shared};
+      closeTransactionContextMenu(false);
+      openTransactionSheet(null,draft,'duplicate');
+      return;
+    }
+    if(action==='privacy'){
+      item.shared=item.shared===false;
+      save();
+      closeTransactionContextMenu(false);
+      render();
+      if(fromPrivateSheet)showPrivateInfo();
+      showToast(item.shared?'공동 내역으로 전환했습니다.':'비공개 내역으로 전환했습니다.');
+      return;
+    }
+    if(action==='delete')showTransactionDeleteConfirmation(item,fromPrivateSheet);
+  }
+
+  function showTransactionDeleteConfirmation(item,fromPrivateSheet=false){
+    els.transactionContextMenu.innerHTML=`<div class="context-menu-confirm"><span class="context-confirm-icon"><i class="ph ph-trash"></i></span><h3>이 내역을 삭제할까요?</h3><p>${esc(item.note||item.category)} · ${fmtMoney(item.amount)}<br>삭제한 내역은 복구할 수 없습니다.</p><div><button type="button" class="secondary-button" data-context-cancel>취소</button><button type="button" class="danger-button" data-context-confirm>삭제</button></div></div>`;
+    positionTransactionContextMenu();
+    els.transactionContextMenu.querySelector('[data-context-cancel]').addEventListener('click',()=>openTransactionContextMenu(item.id,contextMenuAnchor,contextMenuPoint));
+    els.transactionContextMenu.querySelector('[data-context-confirm]').addEventListener('click',()=>{
+      state.transactions=state.transactions.filter(transaction=>transaction.id!==item.id);
+      save();
+      closeTransactionContextMenu(false);
+      render();
+      if(fromPrivateSheet)showPrivateInfo();
+      showToast('내역을 삭제했습니다.');
+    });
+  }
+
+  function closeTransactionContextMenu(restoreFocus=true){
+    if(els.transactionContextMenu.hidden)return;
+    const focusTarget=contextMenuAnchor;
+    els.transactionContextMenu.hidden=true;
+    els.contextMenuBackdrop.hidden=true;
+    els.transactionContextMenu.innerHTML='';
+    els.transactionContextMenu.style.left='';
+    els.transactionContextMenu.style.top='';
+    contextMenuTransactionId=null;
+    contextMenuAnchor=null;
+    contextMenuPoint=null;
+    if(restoreFocus&&focusTarget?.isConnected){
+      try{focusTarget.focus({preventScroll:true});}
+      catch(_){focusTarget.focus();}
+    }
   }
 
   function openTransactionSearch(){
@@ -609,7 +772,7 @@
     if (!list.length) return empty('receipt','해당 내역이 없습니다','가운데 + 버튼으로 기록할 수 있습니다.');
     const groups={};
     list.forEach(t=>(groups[t.date] ||= []).push(t));
-    return Object.keys(groups).sort((a,b)=>b.localeCompare(a)).map(date=>`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;padding:0 3px 6px;color:var(--text-2);font-size:11px;font-weight:750"><span>${fmtDate(date)}</span><span>${fmtMoney(groups[date].filter(t=>t.type==='expense').reduce((s,t)=>s+Number(t.amount),0))}</span></div><div class="list">${groups[date].map(transactionRow).join('')}</div></div>`).join('');
+    return Object.keys(groups).sort((a,b)=>b.localeCompare(a)).map(date=>`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;padding:0 3px 6px;color:var(--text-2);font-size:11px;font-weight:750"><span>${fmtDate(date)}</span><span>${fmtMoney(groups[date].filter(t=>t.type==='expense').reduce((s,t)=>s+Number(t.amount),0))}</span></div><div class="list">${groups[date].map(t=>transactionRow(t)).join('')}</div></div>`).join('');
   }
 
   function renderStats(){
@@ -729,14 +892,15 @@
     </button>`;
   }
 
-  function openTransactionSheet(existingId=null){
+  function openTransactionSheet(existingId=null,draft=null,mode='create'){
     const existing=existingId?state.transactions.find(t=>t.id===existingId):null;
-    const data=existing||{type:'expense',amount:'',category:state.expenseCategories[0],note:'',paymentMethod:state.paymentMethods[0],date:isoToday,shared:state.profile.defaultShared!==false};
-    openSheet(existing?'내역 수정':'빠른 입력','가계부',transactionForm(data,!!existing));
-    wireTransactionForm(existingId);
+    const duplicate=mode==='duplicate'&&!existing;
+    const data=existing||draft||{type:'expense',amount:'',category:state.expenseCategories[0],note:'',paymentMethod:state.paymentMethods[0],date:isoToday,shared:state.profile.defaultShared!==false};
+    openSheet(existing?'내역 수정':duplicate?'내역 복제':'빠른 입력',duplicate?'내용 확인 후 저장':'가계부',transactionForm(data,!!existing,duplicate));
+    wireTransactionForm(existingId,mode);
   }
 
-  function transactionForm(data,isEdit){
+  function transactionForm(data,isEdit,isDuplicate=false){
     return `<form id="txForm">
       <div class="form-section"><div class="segmented"><button type="button" data-txtype="expense" class="${data.type==='expense'?'active':''}">지출</button><button type="button" data-txtype="income" class="${data.type==='income'?'active':''}">수입</button></div></div>
       <div class="form-section"><label class="form-label">금액 <span>금액만 입력해도 저장 가능</span></label><input id="txAmount" class="input amount-input" inputmode="numeric" pattern="[0-9]*" placeholder="0" value="${data.amount||''}" autofocus></div>
@@ -744,14 +908,15 @@
       <div class="form-section inline-grid inline-grid-stack-mobile"><div><label class="form-label">날짜</label><input id="txDate" type="date" class="input" value="${data.date||isoToday}"></div><div><label class="form-label">결제수단</label><select id="txPayment" class="select">${state.paymentMethods.map(p=>`<option ${p===data.paymentMethod?'selected':''}>${esc(p)}</option>`).join('')}</select></div></div>
       <div class="form-section"><label class="form-label">내용 <span>선택</span></label><input id="txNote" class="input" placeholder="이마트, 점심, 쿠팡 등" value="${escAttr(data.note||'')}"></div>
       ${state.profile.mode!=='solo'?`<div class="form-section"><div class="switch-row"><div class="switch-copy"><strong>공동 내역으로 공유</strong><span>끄면 이 거래만 비공개로 저장됩니다.</span></div><input id="txShared" class="toggle" type="checkbox" ${data.shared!==false?'checked':''}></div></div>`:''}
-      ${!isEdit?`<div class="form-section"><div class="switch-row"><div class="switch-copy"><strong>매달 반복</strong><span>날짜가 되면 자동으로 지출/수입에 반영합니다.</span></div><input id="txRecurring" class="toggle" type="checkbox"></div></div>`:''}
-      <div class="button-row"><button type="button" class="secondary-button" id="txCancel">취소</button><button class="primary-button" type="submit">${isEdit?'수정':'저장'}</button></div>
+      ${!isEdit&&!isDuplicate?`<div class="form-section"><div class="switch-row"><div class="switch-copy"><strong>매달 반복</strong><span>날짜가 되면 자동으로 지출/수입에 반영합니다.</span></div><input id="txRecurring" class="toggle" type="checkbox"></div></div>`:''}
+      <div class="button-row"><button type="button" class="secondary-button" id="txCancel">취소</button><button class="primary-button" type="submit">${isEdit?'수정':isDuplicate?'복제 저장':'저장'}</button></div>
       ${isEdit?`<div style="height:9px"></div><button type="button" class="danger-button" id="txDelete">이 내역 삭제</button>`:''}
     </form>`;
   }
 
-  function wireTransactionForm(existingId){
+  function wireTransactionForm(existingId,mode='create'){
     const existing=existingId?state.transactions.find(t=>t.id===existingId):null;
+    const duplicate=mode==='duplicate'&&!existing;
     let type=existing?.type||els.sheetBody.querySelector('[data-txtype].active')?.dataset.txtype||'expense';
     let category=existing?.category||els.sheetBody.querySelector('[data-category].active')?.dataset.category||categoriesForType(type)[0];
 
@@ -789,8 +954,8 @@
         const list=categoriesForType(type);
         if(!list.includes(name)){list.push(name);save();}
         closeSheet();
-        openSheet(existing?'내역 수정':'빠른 입력','가계부',transactionForm({...draft,category:name},!!existing));
-        wireTransactionForm(existingId);
+        openSheet(existing?'내역 수정':duplicate?'내역 복제':'빠른 입력',duplicate?'내용 확인 후 저장':'가계부',transactionForm({...draft,category:name},!!existing,duplicate));
+        wireTransactionForm(existingId,mode);
         showToast('카테고리를 추가했습니다.');
       });
     });
@@ -804,7 +969,7 @@
       if(existingId){const idx=state.transactions.findIndex(t=>t.id===existingId);state.transactions[idx]=item;}else{state.transactions.push(item);}
       const recurring=document.getElementById('txRecurring');
       if(recurring?.checked){state.recurring.push({id:uid(),type,amount,category,note:item.note,paymentMethod:item.paymentMethod,day:parseISO(item.date).getDate(),autoPost:true,shared:item.shared,active:true});}
-      save();closeSheet();render();showToast(existingId?'수정했습니다.':'저장했습니다.');
+      save();closeSheet();render();showToast(existingId?'수정했습니다.':duplicate?'복제했습니다.':'저장했습니다.');
     });
   }
 
@@ -1017,8 +1182,8 @@
   function showPrivateInfo(){
     if(state.profile.mode==='solo'){showToast('혼자 사용 중이라 모든 내역이 내 기록입니다.');return;}
     const count=state.transactions.filter(t=>t.shared===false).length;
-    openSheet('비공개 내역','공동 가계부',count?`<div class="list">${state.transactions.filter(t=>t.shared===false).sort((a,b)=>b.date.localeCompare(a.date)).map(transactionRow).join('')}</div>`:empty('eye-slash','비공개 내역이 없습니다','공동 내역이 기본이며 거래별로 비공개할 수 있습니다.'));
-    els.sheetBody.querySelectorAll('[data-txid]').forEach(btn=>btn.addEventListener('click',()=>openTransactionSheet(btn.dataset.txid)));
+    openSheet('비공개 내역','공동 가계부',count?`<div class="list">${state.transactions.filter(t=>t.shared===false).sort((a,b)=>b.date.localeCompare(a.date)).map(t=>transactionRow(t)).join('')}</div>`:empty('eye-slash','비공개 내역이 없습니다','공동 내역이 기본이며 거래별로 비공개할 수 있습니다.'));
+    wireTransactionRows(els.sheetBody);
   }
 
   function openMiniAdd(title,placeholder,onSave,backAction=null){
@@ -1058,6 +1223,7 @@
   function contrastText(hex){const [r,g,b]=hexRgb(hex).map(v=>v/255);const lum=.2126*r+.7152*g+.0722*b;return lum>.57?'#101416':'#ffffff';}
 
   function openSheet(title,eyebrow,html,backAction=null){
+    closeTransactionContextMenu(false);
     sheetBackAction=typeof backAction==='function'?backAction:null;
     els.sheetTitle.textContent=title;
     els.sheetEyebrow.textContent=eyebrow||'';
