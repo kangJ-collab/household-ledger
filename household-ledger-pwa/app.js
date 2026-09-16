@@ -318,7 +318,7 @@
 
   function render(){
     applyTheme();
-    const titles={home:'홈',transactions:'사용내역',stats:'통계',manage:'관리'};
+    const titles={home:`${monthCursor.getMonth()+1}월`,transactions:'사용내역',stats:'통계',manage:'관리'};
     els.pageTitle.textContent=titles[route]||'홈';
     els.householdLabel.textContent=state.profile.householdName||'우리집';
     els.navItems.forEach(btn=>btn.classList.toggle('active',btn.dataset.route===route));
@@ -333,43 +333,52 @@
     const budget=Number(state.budget.monthly)||0;
     const remaining=budget-expense;
     const pct=budget?Math.round(expense/budget*100):0;
+    const isCurrentMonth=monthKey()===monthKey(today);
+    const spendLabel=isCurrentMonth?'이번 달 지출':`${monthCursor.getFullYear()}년 ${monthCursor.getMonth()+1}월 지출`;
+    const secondaryLabel=budget?(remaining<0?'예산 초과':'남은 예산'):'수입 - 지출';
+    const secondaryValue=budget?Math.abs(remaining):income-expense;
     const recurring=upcomingRecurring().filter(r=>r.date>=isoToday).slice(0,3);
     const recent=[...monthTransactions()].sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt).slice(0,6);
     els.main.innerHTML=`
-      <section class="section">
-        <div class="hero-card">
-          <div class="hero-top">
-            <div><span class="hero-label">${monthCursor.getMonth()+1}월 이번 달 지출</span></div>
-            <div class="month-switch">
-              <button data-month="-1" aria-label="이전 달"><i class="ph ph-caret-left"></i></button>
-              <button data-month="1" aria-label="다음 달"><i class="ph ph-caret-right"></i></button>
-            </div>
-          </div>
-          <div class="hero-amount">${fmtMoney(expense)}</div>
-          <div class="progress ${pct>100?'over':''}"><span style="width:${Math.min(pct,100)}%"></span></div>
-          <div class="hero-sub">
-            <span>${budget?`예산 ${fmtMoney(budget)} 중 ${pct}%`:'이번 달 예산을 설정해보세요'}</span>
-            <strong style="color:${remaining<0?'var(--expense)':'var(--accent-strong)'}">${budget?(remaining>=0?`${fmtMoney(remaining)} 남음`:`${fmtMoney(Math.abs(remaining))} 초과`):''}</strong>
-          </div>
-          <div class="summary-grid">
-            <div class="summary-cell"><span>수입</span><strong class="income">${fmtShortMoney(income)}</strong></div>
-            <div class="summary-cell"><span>지출</span><strong class="expense">${fmtShortMoney(expense)}</strong></div>
-            <div class="summary-cell"><span>차액</span><strong>${fmtShortMoney(income-expense)}</strong></div>
+      <section class="home-overview" aria-labelledby="homeExpenseLabel">
+        <div class="home-overview-head">
+          <p class="home-overview-kicker" id="homeExpenseLabel">${spendLabel}</p>
+          <div class="month-switch">
+            <button data-month="-1" aria-label="이전 달"><i class="ph ph-caret-left"></i></button>
+            <button data-month="1" aria-label="다음 달"><i class="ph ph-caret-right"></i></button>
           </div>
         </div>
+        <p class="home-overview-amount">${fmtMoney(expense)}</p>
+        <div class="home-budget">
+          <div class="home-budget-track ${pct>100?'over':''}" aria-hidden="true"><span style="width:${Math.min(pct,100)}%"></span></div>
+          <div class="home-budget-meta">
+            <span>${budget?`예산 ${fmtMoney(budget)}`:'이번 달 예산을 설정해보세요'}</span>
+            ${budget?`<strong class="${pct>100?'negative':''}">${pct}% 사용</strong>`:''}
+          </div>
+        </div>
+        <dl class="home-metrics" aria-label="이번 달 요약">
+          <div class="home-metric">
+            <dt>수입</dt>
+            <dd class="income">${fmtMoney(income)}</dd>
+          </div>
+          <div class="home-metric">
+            <dt>${secondaryLabel}</dt>
+            <dd class="${secondaryValue<0||remaining<0&&budget?'negative':''}">${fmtMoney(secondaryValue)}</dd>
+          </div>
+        </dl>
       </section>
 
-      ${recurring.length?`<section class="section">
-        <div class="section-head"><div><h2>예정 지출</h2><p>자동 반영되는 반복지출</p></div><button class="text-button" data-action="recurring-settings">관리</button></div>
-        <div class="list">${recurring.map(r=>transactionRow({...r,id:`up-${r.id}`},true)).join('')}</div>
+      ${recurring.length?`<section class="section home-section">
+        <div class="section-head"><div><h2>예정</h2><p>자동 반영되는 고정지출</p></div><button class="text-button" data-action="recurring-settings">관리</button></div>
+        <div class="home-group">${recurring.map(r=>transactionRow({...r,id:`up-${r.id}`},true)).join('')}</div>
       </section>`:''}
 
-      <section class="section">
-        <div class="section-head"><div><h2>최근 사용내역</h2><p>${monthCursor.getMonth()+1}월 기록</p></div><button class="text-button" data-action="go-transactions">전체보기</button></div>
-        ${recent.length?`<div class="list">${recent.map(t=>transactionRow(t)).join('')}</div>`:empty('receipt','아직 기록이 없습니다','가운데 + 버튼으로 첫 지출을 기록해보세요.')}
+      <section class="section home-section">
+        <div class="section-head"><div><h2>최근 내역</h2><p>${monthCursor.getMonth()+1}월 기록</p></div><button class="text-button" data-action="go-transactions">전체보기</button></div>
+        ${recent.length?`<div class="home-group">${recent.map(t=>transactionRow(t)).join('')}</div>`:`<div class="home-empty"><i class="ph-duotone ph-receipt"></i><strong>아직 기록이 없습니다</strong><p>가운데 + 버튼으로 첫 지출을 기록해보세요.</p></div>`}
       </section>
 
-      ${state.metadata.sample?`<section class="section"><div class="subtle-box">현재 예시 내역이 들어 있습니다. 설정에서 예시 데이터를 지우고 실제 가계부로 바로 시작할 수 있습니다.</div></section>`:''}
+      ${state.metadata.sample?`<p class="home-sample-note"><i class="ph ph-info"></i><span>현재 예시 내역이 들어 있습니다. 설정에서 지우고 실제 가계부로 시작할 수 있습니다.</span></p>`:''}
     `;
     els.main.querySelectorAll('[data-month]').forEach(btn=>btn.addEventListener('click',()=>{ monthCursor=new Date(monthCursor.getFullYear(),monthCursor.getMonth()+Number(btn.dataset.month),1); render(); }));
     els.main.querySelector('[data-action="go-transactions"]')?.addEventListener('click',()=>{route='transactions';render();});

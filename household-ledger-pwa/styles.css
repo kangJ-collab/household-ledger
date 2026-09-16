@@ -953,3 +953,186 @@ html[data-style="classic"] .calendar-card{box-shadow:none}
 /* ==================================================================
    END APPLE-INSPIRED UI TEST LAYER v1
    ================================================================== */
+
+/* ==================================================================
+   HOME INFORMATION ARCHITECTURE v1
+   Flat monthly hierarchy + grouped lists. Home only.
+   ================================================================== */
+
+.home-overview{
+  margin:0 0 30px;
+  padding:8px 4px 0;
+}
+.home-overview-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+}
+.home-overview-kicker{
+  min-width:0;
+  margin:0;
+  color:var(--text-2);
+  font-size:13px;
+  line-height:1.3;
+  font-weight:620;
+}
+.home-overview-amount{
+  margin:10px 0 0;
+  color:var(--text);
+  font-size:clamp(40px,11vw,52px);
+  line-height:1;
+  font-weight:790;
+  letter-spacing:-.06em;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.home-overview .month-switch{
+  flex:none;
+}
+.home-overview .month-switch button{
+  background:color-mix(in srgb,var(--surface) 72%,transparent);
+  box-shadow:0 .5px 0 color-mix(in srgb,var(--line) 75%,transparent);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+}
+.home-budget{margin-top:24px}
+.home-budget-track{
+  height:7px;
+  overflow:hidden;
+  border-radius:999px;
+  background:var(--surface-3);
+}
+.home-budget-track span{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:var(--accent);
+  transition:width .25s ease;
+}
+.home-budget-track.over span{background:var(--expense)}
+.home-budget-meta{
+  min-height:20px;
+  margin-top:8px;
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  color:var(--text-2);
+  font-size:12px;
+  line-height:1.35;
+}
+.home-budget-meta strong{
+  flex:none;
+  color:var(--accent-strong);
+  font-weight:680;
+}
+.home-budget-meta .negative{color:var(--expense)}
+.home-metrics{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  margin:20px 0 0;
+  padding:0;
+  border-top:.5px solid var(--line);
+  border-bottom:.5px solid var(--line);
+}
+.home-metric{
+  min-width:0;
+  padding:14px 4px 13px;
+}
+.home-metric + .home-metric{
+  padding-left:18px;
+  border-left:.5px solid var(--line);
+}
+.home-metric dt{
+  margin:0 0 5px;
+  color:var(--text-2);
+  font-size:11px;
+  line-height:1.3;
+  font-weight:620;
+}
+.home-metric dd{
+  margin:0;
+  overflow:hidden;
+  color:var(--text);
+  font-size:18px;
+  line-height:1.25;
+  font-weight:720;
+  letter-spacing:-.035em;
+  font-variant-numeric:tabular-nums;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.home-metric dd.income{color:var(--income)}
+.home-metric dd.negative{color:var(--expense)}
+
+.home-section{margin-bottom:28px}
+.home-section .section-head{margin:0 4px 10px}
+.home-section .section-head h2{
+  font-size:19px;
+  font-weight:740;
+  letter-spacing:-.035em;
+}
+.home-group{
+  overflow:hidden;
+  border-radius:18px;
+  background:var(--surface);
+  box-shadow:0 .5px 0 var(--line);
+}
+.home-group .list-row{
+  min-height:62px;
+  padding-left:14px;
+  padding-right:14px;
+}
+.home-empty{
+  padding:30px 20px;
+  border-radius:18px;
+  background:var(--surface);
+  box-shadow:0 .5px 0 var(--line);
+  color:var(--text-2);
+  text-align:center;
+}
+.home-empty > i{
+  display:block;
+  margin-bottom:10px;
+  color:var(--accent);
+  font-size:31px;
+}
+.home-empty strong{
+  display:block;
+  color:var(--text);
+  font-size:15px;
+  font-weight:680;
+}
+.home-empty p{
+  margin:6px 0 0;
+  font-size:12px;
+  line-height:1.5;
+}
+.home-sample-note{
+  margin:-4px 4px 4px;
+  display:flex;
+  align-items:flex-start;
+  gap:7px;
+  color:var(--text-2);
+  font-size:11px;
+  line-height:1.5;
+}
+.home-sample-note i{
+  flex:none;
+  margin-top:2px;
+  color:var(--accent-strong);
+  font-size:14px;
+}
+
+@media (max-width:390px){
+  .home-overview{padding-top:5px}
+  .home-overview-head{gap:12px}
+  .home-overview-amount{font-size:40px}
+  .home-metric + .home-metric{padding-left:14px}
+  .home-metric dd{font-size:17px}
+}
+
+/* ==================================================================
+   END HOME INFORMATION ARCHITECTURE v1
+   ================================================================== */
