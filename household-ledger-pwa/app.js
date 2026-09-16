@@ -178,7 +178,7 @@
     return {
       version:2,
       profile:{ householdName:'우리집', mode:'couple', defaultShared:true, memberName:'나', partnerName:'배우자' },
-      preferences:{ style:'compact', theme:'system', accent:'slate', customAccent:'#315d73' },
+      preferences:{ style:'compact', theme:'system', accent:'slate', customAccent:'#315d73', tabBarOpacity:68 },
       budget:{ monthly:2000000, byCategory:{'식비':600000,'외식':250000,'쇼핑':200000,'차량':300000} },
       expenseCategories:['식비','외식','장보기','쇼핑','생활','교통','차량','주거','교육','의료','보험','구독','경조사','여행','기타'],
       incomeCategories:['급여','상여','성과급','환급','용돈','기타'],
@@ -221,7 +221,9 @@
 
   function normalizeState(){
     state.profile ||= {householdName:'우리집',mode:'couple',defaultShared:true,memberName:'나',partnerName:'배우자'};
-    state.preferences ||= {style:'compact',theme:'system',accent:'slate',customAccent:'#315d73'};
+    state.preferences ||= {style:'compact',theme:'system',accent:'slate',customAccent:'#315d73',tabBarOpacity:68};
+    const tabBarOpacity=Number(state.preferences.tabBarOpacity);
+    state.preferences.tabBarOpacity=Number.isFinite(tabBarOpacity)?Math.max(0,Math.min(100,tabBarOpacity)):68;
     state.budget ||= {monthly:0,byCategory:{}};
     const legacyCategories=Array.isArray(state.categories)?state.categories:null;
     state.expenseCategories ||= legacyCategories||['식비','외식','장보기','쇼핑','생활','교통','차량','주거','교육','의료','보험','구독','경조사','여행','기타'];
@@ -1130,10 +1132,17 @@
 
   function openSettingsSheet(){
     const pref=state.preferences;
+    const tabBarOpacity=Math.max(0,Math.min(100,Number(pref.tabBarOpacity)||0));
+    const tabBarOpacityText=tabBarOpacityLabel(tabBarOpacity);
     const memberRole=currentUser?.role==='OWNER'?'관리자':'배우자';
     openSheet('설정','우리집 가계부',`
       <div class="settings-group"><p class="settings-title">사용 방식</p><div class="option-grid" id="modeOptions">${[['solo','나 혼자'],['couple','부부 공동'],['group','여러 명']].map(([v,l])=>`<button class="option ${state.profile.mode===v?'active':''}" data-mode="${v}">${l}</button>`).join('')}</div></div>
       <div class="settings-group"><p class="settings-title">화면 스타일</p><div class="option-grid" id="styleOptions">${[['default','기본'],['compact','컴팩트'],['classic','클래식']].map(([v,l])=>`<button class="option ${pref.style===v?'active':''}" data-style="${v}">${l}</button>`).join('')}</div></div>
+      <div class="settings-group"><p class="settings-title">하단 내비게이션</p><div class="settings-card tabbar-opacity-setting">
+        <div class="tabbar-opacity-heading"><span class="setting-copy"><strong>배경 선명도</strong><span>좌우로 밀어 뒤쪽 내용이 비치는 정도를 조절합니다.</span></span><output id="tabBarOpacityOutput" for="tabBarOpacity">${tabBarOpacityText}</output></div>
+        <div class="tabbar-opacity-preview-stage" aria-hidden="true"><div class="tabbar-opacity-preview-content"><span></span><span></span><span></span></div><div class="tabbar-material-preview"><i class="ph ph-house"></i><i class="ph ph-receipt"></i><i class="ph ph-plus"></i><i class="ph ph-chart-donut"></i><i class="ph ph-wrench"></i></div></div>
+        <label class="tabbar-opacity-control"><span class="sr-only">하단 내비게이션 배경 선명도</span><input id="tabBarOpacity" type="range" min="0" max="100" step="1" value="${tabBarOpacity}" aria-valuetext="${tabBarOpacityText}"><span class="tabbar-opacity-labels" aria-hidden="true"><span>완전 투명</span><span>선명한 배경</span></span></label>
+      </div></div>
       <div class="settings-group"><p class="settings-title">화면 테마</p><div class="option-grid" id="themeOptions">${[['system','시스템'],['light','라이트'],['dark','다크'],['ivory','아이보리'],['warm-ivory','웜 아이보리'],['mist','미스트'],['leaf','리프'],['rose','로즈']].map(([v,l])=>`<button class="option ${pref.theme===v?'active':''}" data-theme="${v}">${l}</button>`).join('')}</div></div>
       <div class="settings-group"><p class="settings-title">강조색</p><div class="accent-grid">${Object.entries(accentPresets).map(([name,color])=>`<button class="accent-swatch ${pref.accent===name?'active':''}" data-accent="${name}" aria-label="${name}" style="background:${color}"></button>`).join('')}<label class="accent-swatch ${pref.accent==='custom'?'active':''}" style="overflow:hidden;position:relative;background:${pref.customAccent||'#315d73'}"><input id="customAccent" type="color" value="${pref.customAccent||'#315d73'}" style="position:absolute;inset:-15px;width:80px;height:80px;opacity:0;cursor:pointer"></label></div></div>
       <div class="settings-group"><p class="settings-title">가계부</p><div class="settings-card">
@@ -1156,6 +1165,27 @@
     els.sheetBody.querySelectorAll('[data-theme]').forEach(btn=>btn.addEventListener('click',()=>{state.preferences.theme=btn.dataset.theme;save();applyTheme();openSettingsSheet();}));
     els.sheetBody.querySelectorAll('[data-accent]').forEach(btn=>btn.addEventListener('click',()=>{state.preferences.accent=btn.dataset.accent;save();applyTheme();openSettingsSheet();}));
     document.getElementById('customAccent')?.addEventListener('input',e=>{state.preferences.customAccent=e.target.value;state.preferences.accent='custom';save();applyTheme();});
+    const tabBarOpacityInput=document.getElementById('tabBarOpacity');
+    const tabBarOpacityOutput=document.getElementById('tabBarOpacityOutput');
+    let tabBarOpacitySaveTimer=null;
+    const updateTabBarOpacity=sync=>{
+      const value=Math.max(0,Math.min(100,Number(tabBarOpacityInput.value)||0));
+      const label=tabBarOpacityLabel(value);
+      state.preferences.tabBarOpacity=value;
+      tabBarOpacityInput.setAttribute('aria-valuetext',label);
+      tabBarOpacityOutput.textContent=label;
+      applyTabBarAppearance();
+      save(sync);
+    };
+    tabBarOpacityInput.addEventListener('input',()=>{
+      updateTabBarOpacity(false);
+      clearTimeout(tabBarOpacitySaveTimer);
+      tabBarOpacitySaveTimer=setTimeout(()=>updateTabBarOpacity(true),500);
+    });
+    tabBarOpacityInput.addEventListener('change',()=>{
+      clearTimeout(tabBarOpacitySaveTimer);
+      updateTabBarOpacity(true);
+    });
     document.getElementById('budgetSetting').addEventListener('click',()=>openBudgetSheet(openSettingsSheet));
     document.getElementById('recurringSetting').addEventListener('click',()=>openRecurringSheet(openSettingsSheet));
     document.getElementById('categorySetting').addEventListener('click',()=>openCategorySheet('expense',openSettingsSheet));
@@ -1283,8 +1313,32 @@
     document.documentElement.style.setProperty('--accent-strong',strong);
     document.documentElement.style.setProperty('--accent-soft',soft);
     document.documentElement.style.setProperty('--accent-contrast',contrastText(accent));
+    applyTabBarAppearance();
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content',resolved==='dark'?'#101416':getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()||'#f3f5f6');
     document.querySelector('meta[name="color-scheme"]')?.setAttribute('content',resolved==='dark'?'dark':'light');
+  }
+
+  function tabBarOpacityLabel(value){
+    if(value<=0) return '완전 투명';
+    if(value<30) return '매우 투명';
+    if(value<60) return '투명';
+    if(value<85) return '반투명';
+    return '선명한 배경';
+  }
+
+  function applyTabBarAppearance(){
+    const value=Math.max(0,Math.min(100,Number(state.preferences?.tabBarOpacity)||0));
+    const strength=value/100;
+    const root=document.documentElement;
+    root.style.setProperty('--tabbar-surface-opacity',`${value}%`);
+    root.style.setProperty('--tabbar-border-opacity',`${Math.round(value*.71)}%`);
+    root.style.setProperty('--tabbar-sheen-top',`rgba(255,255,255,${(.235*strength).toFixed(3)})`);
+    root.style.setProperty('--tabbar-sheen-bottom',`rgba(255,255,255,${(.037*strength).toFixed(3)})`);
+    root.style.setProperty('--tabbar-shadow-color',`rgba(0,0,0,${(.176*strength).toFixed(3)})`);
+    root.style.setProperty('--tabbar-compact-shadow-color',`rgba(0,0,0,${(.191*strength).toFixed(3)})`);
+    root.style.setProperty('--tabbar-inset-color',`rgba(255,255,255,${(.5*strength).toFixed(3)})`);
+    root.style.setProperty('--tabbar-blur',`${Math.min(30,Math.round(value*24/68))}px`);
+    root.style.setProperty('--tabbar-saturation',`${(1+.74*strength).toFixed(2)}`);
   }
 
   function mix(a,b,ratio){
