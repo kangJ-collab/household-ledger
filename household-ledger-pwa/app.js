@@ -27,6 +27,7 @@
     searchBtn: document.getElementById('searchBtn'),
     privacyQuickBtn: document.getElementById('privacyQuickBtn'),
     quickAddBtn: document.getElementById('quickAddBtn'),
+    bottomNav: document.getElementById('bottomNav'),
     navItems: [...document.querySelectorAll('.nav-item')],
     backdrop: document.getElementById('backdrop'),
     sheet: document.getElementById('sheet'),
@@ -67,6 +68,10 @@
   let sheetDragState = null;
   let sheetResizeTimer = null;
   let sheetFocusTimer = null;
+  let bottomNavCompact = false;
+  let bottomNavLastScrollY = Math.max(0,window.scrollY||0);
+  let bottomNavScrollAccumulator = 0;
+  let bottomNavScrollRaf = null;
 
   void boot();
 
@@ -112,6 +117,8 @@
   function startApp(){
     applyTheme();
     bindAppEvents();
+    setBottomNavCompact(false);
+    resetBottomNavScrollTracking();
     render();
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}), {once:true});
@@ -121,6 +128,8 @@
   function bindAppEvents(){
     els.navItems.forEach(btn => btn.addEventListener('click', () => {
       closeTransactionContextMenu(false);
+      setBottomNavCompact(false);
+      resetBottomNavScrollTracking();
       transactionSearchOpen = false;
       route = btn.dataset.route;
       render();
@@ -148,8 +157,10 @@
     window.addEventListener('resize',()=>{
       closeTransactionContextMenu(false);
       scheduleSheetDetentRefresh();
+      if(window.innerWidth>=820)setBottomNavCompact(false);
+      resetBottomNavScrollTracking();
     });
-    window.addEventListener('scroll',()=>closeTransactionContextMenu(false),{passive:true});
+    window.addEventListener('scroll',handleWindowScroll,{passive:true});
     const handleSystemThemeChange = () => {
       if ((state.preferences?.theme || 'system') === 'system') applyTheme();
     };
@@ -351,6 +362,55 @@
       state.metadata.recurringPosted[postKey]=true;
     });
     save();
+  }
+
+  function setBottomNavCompact(compact){
+    const mobile=window.innerWidth<820;
+    const next=mobile&&Boolean(compact);
+    const stateName=next?'compact':'expanded';
+    if(bottomNavCompact===next&&els.bottomNav.classList.contains('is-scroll-compact')===next&&els.bottomNav.dataset.scrollState===stateName)return;
+    bottomNavCompact=next;
+    els.bottomNav.classList.toggle('is-scroll-compact',next);
+    els.bottomNav.dataset.scrollState=stateName;
+    document.documentElement.classList.toggle('tabbar-compact',next);
+  }
+
+  function resetBottomNavScrollTracking(){
+    bottomNavLastScrollY=Math.max(0,window.scrollY||document.documentElement.scrollTop||0);
+    bottomNavScrollAccumulator=0;
+  }
+
+  function handleWindowScroll(){
+    closeTransactionContextMenu(false);
+    if(bottomNavScrollRaf)return;
+    bottomNavScrollRaf=requestAnimationFrame(()=>{
+      bottomNavScrollRaf=null;
+      const current=Math.max(0,window.scrollY||document.documentElement.scrollTop||0);
+      if(window.innerWidth>=820){
+        setBottomNavCompact(false);
+        bottomNavLastScrollY=current;
+        bottomNavScrollAccumulator=0;
+        return;
+      }
+      const delta=Math.max(-40,Math.min(40,current-bottomNavLastScrollY));
+      bottomNavLastScrollY=current;
+      if(current<=28){
+        setBottomNavCompact(false);
+        bottomNavScrollAccumulator=0;
+        return;
+      }
+      if(Math.abs(delta)<1)return;
+      if(delta>0&&bottomNavScrollAccumulator<0)bottomNavScrollAccumulator=0;
+      if(delta<0&&bottomNavScrollAccumulator>0)bottomNavScrollAccumulator=0;
+      bottomNavScrollAccumulator=Math.max(-80,Math.min(80,bottomNavScrollAccumulator+delta));
+      if(!bottomNavCompact&&current>76&&bottomNavScrollAccumulator>=20){
+        setBottomNavCompact(true);
+        bottomNavScrollAccumulator=0;
+      }else if(bottomNavCompact&&bottomNavScrollAccumulator<=-14){
+        setBottomNavCompact(false);
+        bottomNavScrollAccumulator=0;
+      }
+    });
   }
 
   function render(){

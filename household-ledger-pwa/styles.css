@@ -1875,3 +1875,129 @@ body.sheet-is-dragging{
 /* ==================================================================
    END SHEET DETENT v1
    ================================================================== */
+
+/* ==================================================================
+   SCROLL-AWARE TAB BAR v1
+   ================================================================== */
+@media (max-width:819px){
+  .bottom-nav{
+    overflow:hidden;
+    isolation:isolate;
+    border-color:color-mix(in srgb,var(--line) 48%,transparent);
+    background:
+      linear-gradient(rgba(255,255,255,.16),rgba(255,255,255,.025)),
+      color-mix(in srgb,var(--surface) 68%,transparent);
+    box-shadow:
+      0 9px 28px rgba(0,0,0,.12),
+      0 1px 0 color-mix(in srgb,#fff 34%,transparent) inset;
+    backdrop-filter:blur(24px) saturate(1.5);
+    -webkit-backdrop-filter:blur(24px) saturate(1.5);
+    transition:
+      width .28s cubic-bezier(.22,.78,.22,1),
+      height .28s cubic-bezier(.22,.78,.22,1),
+      bottom .28s cubic-bezier(.22,.78,.22,1),
+      padding .28s cubic-bezier(.22,.78,.22,1),
+      border-radius .28s cubic-bezier(.22,.78,.22,1),
+      box-shadow .28s ease,
+      background-color .28s ease;
+  }
+  .nav-item{
+    overflow:hidden;
+    transition:height .28s cubic-bezier(.22,.78,.22,1),gap .22s ease,color .2s ease;
+  }
+  .nav-item i,
+  .nav-item span{position:relative;z-index:1}
+  .nav-item i{transition:font-size .24s ease,transform .24s ease}
+  .nav-item span{
+    display:block;
+    max-height:14px;
+    overflow:hidden;
+    line-height:13px;
+    opacity:1;
+    transform:translateY(0);
+    transition:max-height .2s ease,opacity .16s ease,transform .22s ease;
+  }
+  .nav-item.active::before{
+    z-index:0;
+    transition:top .25s ease,width .25s ease,height .25s ease,border-radius .25s ease,background .25s ease;
+  }
+  .nav-add{
+    transition:
+      width .28s cubic-bezier(.22,.78,.22,1),
+      height .28s cubic-bezier(.22,.78,.22,1),
+      min-width .28s cubic-bezier(.22,.78,.22,1),
+      min-height .28s cubic-bezier(.22,.78,.22,1),
+      border-radius .28s ease,
+      font-size .24s ease,
+      box-shadow .28s ease,
+      transform .16s ease;
+  }
+  .bottom-nav.is-scroll-compact{
+    bottom:calc(8px + var(--safe-bottom));
+    width:min(calc(100% - 56px),380px);
+    height:54px;
+    padding:4px 7px;
+    grid-template-columns:1fr 1fr 54px 1fr 1fr;
+    border-radius:22px;
+    background:
+      linear-gradient(rgba(255,255,255,.14),rgba(255,255,255,.018)),
+      color-mix(in srgb,var(--surface) 58%,transparent);
+    box-shadow:
+      0 7px 24px rgba(0,0,0,.13),
+      0 1px 0 color-mix(in srgb,#fff 32%,transparent) inset;
+    backdrop-filter:blur(22px) saturate(1.55);
+    -webkit-backdrop-filter:blur(22px) saturate(1.55);
+  }
+  .bottom-nav.is-scroll-compact .nav-item{
+    height:46px;
+    min-height:44px;
+    gap:0;
+  }
+  .bottom-nav.is-scroll-compact .nav-item span{
+    max-height:0;
+    opacity:0;
+    transform:translateY(5px);
+  }
+  .bottom-nav.is-scroll-compact .nav-item i{font-size:21px}
+  .bottom-nav.is-scroll-compact .nav-item.active::before{
+    top:5px;
+    width:36px;
+    height:36px;
+    border-radius:14px;
+    background:color-mix(in srgb,var(--accent) 15%,transparent);
+  }
+  .bottom-nav.is-scroll-compact .nav-add{
+    width:44px;
+    height:44px;
+    min-width:44px;
+    min-height:44px;
+    border-radius:16px;
+    font-size:23px;
+    box-shadow:
+      0 6px 15px color-mix(in srgb,var(--accent) 20%,transparent),
+      0 1px 0 rgba(255,255,255,.16) inset;
+  }
+  html[data-style="classic"] .bottom-nav.is-scroll-compact .nav-add{border-radius:9px}
+  .toast{transition:opacity .2s,transform .2s,bottom .28s cubic-bezier(.22,.78,.22,1)}
+  html.tabbar-compact .toast{bottom:calc(76px + var(--safe-bottom))}
+}
+
+@media (max-width:819px) and (prefers-reduced-transparency:reduce){
+  .bottom-nav,
+  .bottom-nav.is-scroll-compact{
+    background:color-mix(in srgb,var(--surface) 96%,var(--bg));
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+  }
+}
+
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  @media (max-width:819px){
+    .bottom-nav,
+    .bottom-nav.is-scroll-compact{background:color-mix(in srgb,var(--surface) 94%,var(--bg))}
+  }
+}
+
+/* ==================================================================
+   END SCROLL-AWARE TAB BAR v1
+   ================================================================== */
