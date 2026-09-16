@@ -1402,3 +1402,179 @@ html[data-style="classic"] .calendar-card{box-shadow:none}
 /* ==================================================================
    END SCREEN-SPECIFIC NAVIGATION v1
    ================================================================== */
+
+/* ==================================================================
+   SEARCH NAVIGATION v1
+   Full-history transaction search with route-preserving results.
+   ================================================================== */
+
+.main-content[data-route="search"]{padding-top:8px}
+.transaction-search{min-height:calc(100dvh - 190px)}
+.search-bar-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:8px;
+  margin:0 0 12px;
+}
+.search-field{
+  min-width:0;
+  min-height:48px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:0 10px 0 13px;
+  border:1px solid transparent;
+  border-radius:14px;
+  background:var(--surface-3);
+  color:var(--text-2);
+}
+.search-field:focus-within{
+  border-color:color-mix(in srgb,var(--accent) 48%,transparent);
+  background:var(--surface);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 12%,transparent);
+}
+.search-field > i{flex:none;font-size:19px}
+.search-field input{
+  width:100%;
+  min-width:0;
+  height:46px;
+  padding:0;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:var(--text);
+  font-size:16px;
+  line-height:1.2;
+}
+.search-field input::placeholder{color:var(--text-2);opacity:.82}
+.search-field input::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
+.search-clear{
+  width:32px;
+  height:40px;
+  flex:none;
+  display:grid;
+  place-items:center;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:var(--text-2);
+  font-size:18px;
+}
+.search-cancel{
+  min-width:42px;
+  min-height:44px;
+  padding:0 2px;
+  border:0;
+  background:transparent;
+  color:var(--accent-strong);
+  font-size:14px;
+  font-weight:650;
+}
+.search-filter-row{
+  display:flex;
+  gap:7px;
+  overflow-x:auto;
+  margin:0 -16px 18px;
+  padding:0 16px 2px;
+  scrollbar-width:none;
+}
+.search-filter-row::-webkit-scrollbar{display:none}
+.search-filter-row button{
+  min-height:40px;
+  flex:none;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:0 13px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--surface);
+  color:var(--text-2);
+  font-size:12px;
+  font-weight:620;
+}
+.search-filter-row button small{
+  min-width:20px;
+  min-height:20px;
+  display:grid;
+  place-items:center;
+  border-radius:999px;
+  background:var(--surface-2);
+  color:var(--text-2);
+  font-size:9px;
+}
+.search-filter-row button.active{
+  border-color:var(--accent);
+  background:var(--accent);
+  color:var(--accent-contrast);
+}
+.search-filter-row button.active small{
+  background:color-mix(in srgb,var(--accent-contrast) 18%,transparent);
+  color:var(--accent-contrast);
+}
+.search-suggestions{
+  margin:0 0 24px;
+  padding:0 4px;
+}
+.search-suggestions > span{
+  display:block;
+  margin-bottom:8px;
+  color:var(--text-2);
+  font-size:11px;
+  font-weight:600;
+}
+.search-suggestions > div{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+}
+.search-suggestions button{
+  min-height:36px;
+  padding:0 12px;
+  border:0;
+  border-radius:999px;
+  background:var(--accent-soft);
+  color:var(--accent-strong);
+  font-size:12px;
+  font-weight:620;
+}
+.search-results-head{
+  min-height:47px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  margin:0 4px 10px;
+}
+.search-results-head h2{
+  margin:0;
+  font-size:20px;
+  line-height:1.2;
+  font-weight:740;
+  letter-spacing:-.035em;
+}
+.search-results-head p{
+  margin:4px 0 0;
+  color:var(--text-2);
+  font-size:11px;
+  line-height:1.35;
+}
+.search-results-head > span{
+  flex:none;
+  padding-bottom:2px;
+  color:var(--text-2);
+  font-size:11px;
+  font-weight:600;
+}
+
+@media (max-width:390px){
+  .search-bar-row{gap:6px}
+  .search-field{padding-left:11px}
+  .search-field input{font-size:16px}
+  .search-filter-row{margin-right:-16px;margin-left:-16px}
+}
+
+/* ==================================================================
+   END SEARCH NAVIGATION v1
+   ================================================================== */

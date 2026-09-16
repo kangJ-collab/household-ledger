@@ -24,6 +24,7 @@
     pageTitle: document.getElementById('pageTitle'),
     householdLabel: document.getElementById('householdLabel'),
     settingsBtn: document.getElementById('settingsBtn'),
+    searchBtn: document.getElementById('searchBtn'),
     privacyQuickBtn: document.getElementById('privacyQuickBtn'),
     quickAddBtn: document.getElementById('quickAddBtn'),
     navItems: [...document.querySelectorAll('.nav-item')],
@@ -43,6 +44,9 @@
   let txView = 'list';
   let statsView = 'overview';
   let manageView = 'recurring';
+  let transactionSearchOpen = false;
+  let transactionSearchQuery = '';
+  let transactionSearchFilter = 'all';
   let selectedCalendarDate = isoToday;
   let toastTimer = null;
   let currentUser = null;
@@ -104,17 +108,23 @@
 
   function bindAppEvents(){
     els.navItems.forEach(btn => btn.addEventListener('click', () => {
+      transactionSearchOpen = false;
       route = btn.dataset.route;
       render();
       window.scrollTo({top:0, behavior:'smooth'});
     }));
     els.quickAddBtn.addEventListener('click', () => openTransactionSheet());
+    els.searchBtn.addEventListener('click', openTransactionSearch);
     els.settingsBtn.addEventListener('click', openSettingsSheet);
     els.privacyQuickBtn.addEventListener('click', showPrivateInfo);
     els.sheetCloseBtn.addEventListener('click', closeSheet);
     els.sheetBackBtn.addEventListener('click',()=>{const action=sheetBackAction; if(action)action();});
     els.backdrop.addEventListener('click', closeSheet);
-    document.addEventListener('keydown', event => { if (event.key === 'Escape') closeSheet(); });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      if (!els.sheet.hidden) closeSheet();
+      else if (transactionSearchOpen) closeTransactionSearch();
+    });
     const handleSystemThemeChange = () => {
       if ((state.preferences?.theme || 'system') === 'system') applyTheme();
     };
@@ -323,10 +333,12 @@
     const household=state.profile.householdName||'우리집';
     const titles={home:`${monthCursor.getMonth()+1}월`,transactions:'사용내역',stats:'통계',manage:'관리'};
     const eyebrows={home:household,transactions:`${household} · 기록`,stats:`${household} · 월간 분석`,manage:household};
-    els.pageTitle.textContent=titles[route]||'홈';
-    els.householdLabel.textContent=eyebrows[route]||household;
-    els.privacyQuickBtn.hidden=!(route==='home'||route==='transactions');
-    els.main.dataset.route=route;
+    els.pageTitle.textContent=transactionSearchOpen?'검색':(titles[route]||'홈');
+    els.householdLabel.textContent=transactionSearchOpen?'사용내역':(eyebrows[route]||household);
+    els.searchBtn.hidden=route!=='transactions'||transactionSearchOpen;
+    els.privacyQuickBtn.hidden=route!=='home';
+    els.settingsBtn.hidden=transactionSearchOpen;
+    els.main.dataset.route=transactionSearchOpen?'search':route;
     els.navItems.forEach(btn=>{
       const active=btn.dataset.route===route;
       btn.classList.toggle('active',active);
@@ -334,7 +346,7 @@
       else btn.removeAttribute('aria-current');
     });
     if (route==='home') renderHome();
-    if (route==='transactions') renderTransactions();
+    if (route==='transactions') transactionSearchOpen?renderTransactionSearch():renderTransactions();
     if (route==='stats') renderStats();
     if (route==='manage') renderManage();
   }
@@ -415,6 +427,128 @@
       if (!btn.dataset.txid) return;
       btn.addEventListener('click',()=>openTransactionDetail(btn.dataset.txid));
     });
+  }
+
+  function openTransactionSearch(){
+    route='transactions';
+    transactionSearchOpen=true;
+    transactionSearchQuery='';
+    transactionSearchFilter='all';
+    render();
+    const input=document.getElementById('transactionSearchInput');
+    if(input){
+      try{input.focus({preventScroll:true});}
+      catch(_){input.focus();}
+    }
+  }
+
+  function closeTransactionSearch(){
+    transactionSearchOpen=false;
+    transactionSearchQuery='';
+    transactionSearchFilter='all';
+    render();
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  function renderTransactionSearch(){
+    const recent=[...state.transactions].sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
+    const suggestions=[...new Set(recent.map(item=>item.category).filter(Boolean))].slice(0,6);
+    const filters=[
+      ['all','전체',state.transactions.length],
+      ['expense','지출',state.transactions.filter(item=>item.type==='expense').length],
+      ['income','수입',state.transactions.filter(item=>item.type==='income').length],
+      ['private','비공개',state.transactions.filter(item=>item.shared===false).length]
+    ];
+    els.main.innerHTML=`
+      <section class="transaction-search" aria-label="사용내역 검색">
+        <form class="search-bar-row" id="transactionSearchForm" role="search">
+          <div class="search-field">
+            <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+            <input id="transactionSearchInput" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="내용, 카테고리, 결제수단, 금액" value="${escAttr(transactionSearchQuery)}" aria-label="사용내역 검색어">
+            <button type="button" class="search-clear" id="transactionSearchClear" aria-label="검색어 지우기" ${transactionSearchQuery?'':'hidden'}><i class="ph ph-x-circle"></i></button>
+          </div>
+          <button type="button" class="search-cancel" id="transactionSearchCancel">취소</button>
+        </form>
+
+        <nav class="search-filter-row" aria-label="검색 필터">
+          ${filters.map(([value,label,count])=>`<button type="button" data-search-filter="${value}" class="${transactionSearchFilter===value?'active':''}" aria-pressed="${transactionSearchFilter===value}"><span>${label}</span><small>${count}</small></button>`).join('')}
+        </nav>
+
+        ${suggestions.length?`<div class="search-suggestions" id="transactionSearchSuggestions"><span>빠른 검색</span><div>${suggestions.map(category=>`<button type="button" data-search-suggestion="${escAttr(category)}">${esc(category)}</button>`).join('')}</div></div>`:''}
+        <div id="transactionSearchResults" aria-live="polite"></div>
+      </section>`;
+
+    const input=document.getElementById('transactionSearchInput');
+    document.getElementById('transactionSearchForm').addEventListener('submit',event=>{event.preventDefault();input.blur();});
+    document.getElementById('transactionSearchCancel').addEventListener('click',closeTransactionSearch);
+    document.getElementById('transactionSearchClear').addEventListener('click',()=>{
+      transactionSearchQuery='';
+      input.value='';
+      updateTransactionSearchResults();
+      input.focus();
+    });
+    input.addEventListener('input',()=>{
+      transactionSearchQuery=input.value;
+      updateTransactionSearchResults();
+    });
+    els.main.querySelectorAll('[data-search-filter]').forEach(btn=>btn.addEventListener('click',()=>{
+      transactionSearchFilter=btn.dataset.searchFilter;
+      els.main.querySelectorAll('[data-search-filter]').forEach(item=>{
+        const active=item===btn;
+        item.classList.toggle('active',active);
+        item.setAttribute('aria-pressed',String(active));
+      });
+      updateTransactionSearchResults();
+    }));
+    els.main.querySelectorAll('[data-search-suggestion]').forEach(btn=>btn.addEventListener('click',()=>{
+      transactionSearchQuery=btn.dataset.searchSuggestion;
+      input.value=transactionSearchQuery;
+      input.focus();
+      updateTransactionSearchResults();
+    }));
+    updateTransactionSearchResults();
+  }
+
+  function updateTransactionSearchResults(){
+    const result=els.main.querySelector('#transactionSearchResults');
+    if(!result)return;
+    const query=normalizeSearchText(transactionSearchQuery);
+    const tokens=query.split(' ').filter(Boolean);
+    const all=[...state.transactions]
+      .filter(item=>{
+        if(transactionSearchFilter==='expense'&&item.type!=='expense')return false;
+        if(transactionSearchFilter==='income'&&item.type!=='income')return false;
+        if(transactionSearchFilter==='private'&&item.shared!==false)return false;
+        if(!tokens.length)return true;
+        const date=parseISO(item.date);
+        const haystack=normalizeSearchText([
+          item.note,item.category,item.paymentMethod,item.date,
+          `${date.getFullYear()}년 ${date.getMonth()+1}월 ${date.getDate()}일`,
+          item.type==='income'?'수입':'지출',item.shared===false?'비공개':'공동',
+          item.amount,currency.format(Number(item.amount)||0),fmtMoney(item.amount)
+        ].join(' '));
+        return tokens.every(token=>haystack.includes(token));
+      })
+      .sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
+    const visible=(tokens.length||transactionSearchFilter!=='all'?all:all.slice(0,20)).slice(0,200);
+    const expense=all.filter(item=>item.type==='expense').reduce((sum,item)=>sum+Number(item.amount||0),0);
+    const income=all.filter(item=>item.type==='income').reduce((sum,item)=>sum+Number(item.amount||0),0);
+    const title=tokens.length?`검색 결과 ${all.length}건`:(transactionSearchFilter==='all'?'최근 기록':`${transactionSearchFilter==='expense'?'지출':transactionSearchFilter==='income'?'수입':'비공개'} ${all.length}건`);
+    const description=transactionSearchFilter==='all'&&!tokens.length
+      ?`${Math.min(all.length,20)}건 표시 · 모든 월에서 검색 가능`
+      :`${expense?`지출 ${fmtMoney(expense)}`:''}${expense&&income?' · ':''}${income?`수입 ${fmtMoney(income)}`:''}`;
+    result.innerHTML=`
+      <div class="search-results-head"><div><h2>${title}</h2><p>${description||'조건에 맞는 내역'}</p></div>${all.length?`<span>${all.length>visible.length?`상위 ${visible.length}건`:`${all.length}건`}</span>`:''}</div>
+      ${visible.length?renderTransactionList(visible):empty('magnifying-glass','검색 결과가 없습니다','다른 검색어나 필터를 사용해보세요.')}`;
+    const clear=document.getElementById('transactionSearchClear');
+    if(clear)clear.hidden=!transactionSearchQuery;
+    const suggestions=document.getElementById('transactionSearchSuggestions');
+    if(suggestions)suggestions.hidden=Boolean(tokens.length)||transactionSearchFilter!=='all';
+    wireTransactionRows();
+  }
+
+  function normalizeSearchText(value=''){
+    return String(value).normalize('NFKC').toLocaleLowerCase('ko-KR').replace(/\s+/g,' ').trim();
   }
 
   function renderTransactions(){

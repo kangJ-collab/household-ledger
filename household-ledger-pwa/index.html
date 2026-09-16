@@ -28,7 +28,7 @@
       document.documentElement.style.colorScheme=resolved==='dark'?'dark':'light';
     })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=screen-nav-v1" />
+  <link rel="stylesheet" href="./styles.css?v=search-nav-v1" />
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -38,6 +38,9 @@
         <h1 id="pageTitle">홈</h1>
       </div>
       <div class="topbar-actions">
+        <button class="icon-button" id="searchBtn" aria-label="사용내역 검색" hidden>
+          <i class="ph ph-magnifying-glass"></i>
+        </button>
         <button class="icon-button" id="privacyQuickBtn" aria-label="비공개 내역 보기">
           <i class="ph ph-eye-slash"></i>
         </button>
@@ -85,7 +88,7 @@
   </section>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="./icons.js" defer></script>
-  <script src="./app.js?v=screen-nav-v1" defer></script>
+  <script src="./icons.js?v=search-nav-v1" defer></script>
+  <script src="./app.js?v=search-nav-v1" defer></script>
 </body>
 </html>
