@@ -41,6 +41,8 @@
   let route = 'home';
   let monthCursor = new Date(today.getFullYear(), today.getMonth(), 1);
   let txView = 'list';
+  let statsView = 'overview';
+  let manageView = 'recurring';
   let selectedCalendarDate = isoToday;
   let toastTimer = null;
   let currentUser = null;
@@ -318,10 +320,19 @@
 
   function render(){
     applyTheme();
+    const household=state.profile.householdName||'우리집';
     const titles={home:`${monthCursor.getMonth()+1}월`,transactions:'사용내역',stats:'통계',manage:'관리'};
+    const eyebrows={home:household,transactions:`${household} · 기록`,stats:`${household} · 월간 분석`,manage:household};
     els.pageTitle.textContent=titles[route]||'홈';
-    els.householdLabel.textContent=state.profile.householdName||'우리집';
-    els.navItems.forEach(btn=>btn.classList.toggle('active',btn.dataset.route===route));
+    els.householdLabel.textContent=eyebrows[route]||household;
+    els.privacyQuickBtn.hidden=!(route==='home'||route==='transactions');
+    els.main.dataset.route=route;
+    els.navItems.forEach(btn=>{
+      const active=btn.dataset.route===route;
+      btn.classList.toggle('active',active);
+      if(active)btn.setAttribute('aria-current','page');
+      else btn.removeAttribute('aria-current');
+    });
     if (route==='home') renderHome();
     if (route==='transactions') renderTransactions();
     if (route==='stats') renderStats();
@@ -408,23 +419,32 @@
 
   function renderTransactions(){
     const list=[...monthTransactions()].sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);
+    const {income,expense}=sums();
     els.main.innerHTML=`
-      <section class="section">
-        <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div class="month-switch">
-            <button data-month="-1"><i class="ph ph-caret-left"></i></button>
-            <strong style="font-size:15px;min-width:84px;text-align:center">${monthCursor.getFullYear()}.${String(monthCursor.getMonth()+1).padStart(2,'0')}</strong>
-            <button data-month="1"><i class="ph ph-caret-right"></i></button>
+      <section class="screen-nav-panel" aria-label="사용내역 탐색">
+        <div class="screen-month-nav">
+          <button class="screen-month-button" data-month="-1" aria-label="이전 달"><i class="ph ph-caret-left"></i></button>
+          <div class="screen-month-copy">
+            <span>기록을 보는 달</span>
+            <strong>${monthCursor.getFullYear()}년 ${monthCursor.getMonth()+1}월</strong>
           </div>
-          <div class="segmented" style="width:142px">
-            <button data-view="list" class="${txView==='list'?'active':''}">목록</button>
-            <button data-view="calendar" class="${txView==='calendar'?'active':''}">달력</button>
-          </div>
+          <button class="screen-month-button" data-month="1" aria-label="다음 달"><i class="ph ph-caret-right"></i></button>
         </div>
-        ${txView==='calendar'?renderCalendar():''}
+        <div class="screen-view-switch" role="tablist" aria-label="내역 표시 방식">
+          <button type="button" role="tab" aria-selected="${txView==='list'}" data-view="list" class="${txView==='list'?'active':''}"><i class="ph ph-list-bullets"></i><span>목록</span></button>
+          <button type="button" role="tab" aria-selected="${txView==='calendar'}" data-view="calendar" class="${txView==='calendar'?'active':''}"><i class="ph ph-calendar-blank"></i><span>달력</span></button>
+        </div>
       </section>
-      <section class="section">
-        <div class="section-head"><div><h2>${txView==='calendar'&&selectedCalendarDate?.startsWith(monthKey())?fmtDate(selectedCalendarDate):'전체 내역'}</h2><p>${txView==='calendar'?'선택한 날짜':'날짜순'}</p></div></div>
+
+      <dl class="screen-metrics screen-metrics-three" aria-label="선택한 달 요약">
+        <div><dt>지출</dt><dd>${fmtShortMoney(expense)}원</dd></div>
+        <div><dt>수입</dt><dd class="income">${fmtShortMoney(income)}원</dd></div>
+        <div><dt>기록</dt><dd>${list.length}건</dd></div>
+      </dl>
+
+      ${txView==='calendar'?`<section class="section calendar-section">${renderCalendar()}</section>`:''}
+      <section class="section screen-result-section">
+        <div class="section-head"><div><h2>${txView==='calendar'&&selectedCalendarDate?.startsWith(monthKey())?fmtDate(selectedCalendarDate):`${monthCursor.getMonth()+1}월 내역`}</h2><p>${txView==='calendar'?'선택한 날짜의 기록':'최근 날짜부터 표시'}</p></div></div>
         ${renderTransactionList(txView==='calendar'?list.filter(t=>t.date===selectedCalendarDate):list)}
       </section>`;
     els.main.querySelectorAll('[data-month]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -467,17 +487,48 @@
     for(let i=5;i>=0;i--){ const d=new Date(monthCursor.getFullYear(),monthCursor.getMonth()-i,1); history.push({d,total:sums(d).expense}); }
     const max=Math.max(...history.map(x=>x.total),1);
     const top=cats[0];
+    const monthlyBudget=Number(state.budget.monthly)||0;
+    const budgetRemaining=monthlyBudget-total;
+    const budgetPct=monthlyBudget?Math.round(total/monthlyBudget*100):0;
     els.main.innerHTML=`
-      <section class="section"><div class="hero-card">
-        <div class="stats-total"><div><span>${monthCursor.getMonth()+1}월 총 지출</span><strong style="display:block;margin-top:6px">${fmtMoney(total)}</strong></div>${top?`<div style="text-align:right"><span>가장 많이 쓴 곳</span><strong style="display:block;font-size:15px;margin-top:5px;color:var(--accent-strong)">${esc(top[0])}</strong></div>`:''}</div>
-      </div></section>
-      <section class="section"><div class="section-head"><div><h2>카테고리별</h2><p>위플처럼 단순하게 비중 확인</p></div></div>
-        ${cats.length?`<div class="card category-stats">${cats.map(([name,val])=>`<div class="stat-row"><span class="stat-label">${esc(name)}</span><span class="bar"><span style="width:${total?val/total*100:0}%"></span></span><span class="stat-value">${Math.round(val/Math.max(total,1)*100)}%</span></div>`).join('')}</div>`:empty('chart-donut','통계가 없습니다','지출을 기록하면 카테고리별로 자동 집계됩니다.')}
+      <section class="screen-nav-panel" aria-label="통계 탐색">
+        <div class="screen-month-nav">
+          <button class="screen-month-button" data-month="-1" aria-label="이전 달"><i class="ph ph-caret-left"></i></button>
+          <div class="screen-month-copy">
+            <span>분석할 달</span>
+            <strong>${monthCursor.getFullYear()}년 ${monthCursor.getMonth()+1}월</strong>
+          </div>
+          <button class="screen-month-button" data-month="1" aria-label="다음 달"><i class="ph ph-caret-right"></i></button>
+        </div>
+        <div class="screen-view-switch" role="tablist" aria-label="통계 종류">
+          <button type="button" role="tab" aria-selected="${statsView==='overview'}" data-stats-view="overview" class="${statsView==='overview'?'active':''}"><i class="ph ph-chart-donut"></i><span>지출 분석</span></button>
+          <button type="button" role="tab" aria-selected="${statsView==='budget'}" data-stats-view="budget" class="${statsView==='budget'?'active':''}"><i class="ph ph-wallet"></i><span>예산</span></button>
+        </div>
       </section>
-      <section class="section"><div class="section-head"><div><h2>최근 6개월</h2><p>월별 지출 흐름</p></div></div>
-        <div class="card month-bars">${history.map((x,i)=>`<div class="month-bar ${i===history.length-1?'current':''}"><div class="column" title="${fmtMoney(x.total)}" style="height:${Math.max(4,x.total/max*115)}px"></div><small>${x.d.getMonth()+1}월</small></div>`).join('')}</div>
-      </section>
-      <section class="section"><div class="section-head"><div><h2>예산 사용</h2><p>전체 + 카테고리별 예산</p></div><button class="text-button" data-action="budget">설정</button></div>${renderBudgetStats(byCat)}</section>`;
+
+      ${statsView==='overview'?`
+        <section class="stats-lead" aria-label="월 지출 요약">
+          <div><span>${monthCursor.getMonth()+1}월 총 지출</span><strong>${fmtMoney(total)}</strong></div>
+          ${top?`<div class="stats-lead-side"><span>가장 큰 카테고리</span><strong>${esc(top[0])}</strong></div>`:''}
+        </section>
+        <section class="section"><div class="section-head"><div><h2>어디에 썼나요</h2><p>카테고리별 지출 비중</p></div></div>
+          ${cats.length?`<div class="card category-stats">${cats.map(([name,val])=>`<div class="stat-row"><span class="stat-label">${esc(name)}</span><span class="bar"><span style="width:${total?val/total*100:0}%"></span></span><span class="stat-value">${Math.round(val/Math.max(total,1)*100)}%</span></div>`).join('')}</div>`:empty('chart-donut','통계가 없습니다','지출을 기록하면 카테고리별로 자동 집계됩니다.')}
+        </section>
+        <section class="section"><div class="section-head"><div><h2>6개월 흐름</h2><p>월별 지출 변화</p></div></div>
+          <div class="card month-bars">${history.map((x,i)=>`<div class="month-bar ${i===history.length-1?'current':''}"><div class="column" title="${fmtMoney(x.total)}" style="height:${Math.max(4,x.total/max*115)}px"></div><small>${x.d.getMonth()+1}월</small></div>`).join('')}</div>
+        </section>`:`
+        <section class="stats-lead budget-lead" aria-label="월 예산 요약">
+          <div><span>${monthCursor.getMonth()+1}월 예산 사용</span><strong>${monthlyBudget?`${budgetPct}%`:'미설정'}</strong></div>
+          <div class="stats-lead-side"><span>${monthlyBudget?(budgetRemaining>=0?'남은 예산':'예산 초과'):'사용 금액'}</span><strong class="${budgetRemaining<0&&monthlyBudget?'negative':''}">${monthlyBudget?fmtMoney(Math.abs(budgetRemaining)):fmtMoney(total)}</strong></div>
+          ${monthlyBudget?`<div class="budget-lead-track ${budgetPct>100?'over':''}"><span style="width:${Math.min(budgetPct,100)}%"></span></div>`:''}
+        </section>
+        <section class="section"><div class="section-head"><div><h2>카테고리 예산</h2><p>항목별 사용 현황</p></div><button class="text-button" data-action="budget">예산 설정</button></div>${renderBudgetStats(byCat)}</section>`}
+    `;
+    els.main.querySelectorAll('[data-month]').forEach(btn=>btn.addEventListener('click',()=>{
+      monthCursor=new Date(monthCursor.getFullYear(),monthCursor.getMonth()+Number(btn.dataset.month),1);
+      render();
+    }));
+    els.main.querySelectorAll('[data-stats-view]').forEach(btn=>btn.addEventListener('click',()=>{statsView=btn.dataset.statsView;render();}));
     els.main.querySelector('[data-action="budget"]')?.addEventListener('click',openBudgetSheet);
   }
 
@@ -490,33 +541,41 @@
   function renderManage(){
     const vehicles=state.vehicles;
     const activeRecurring=state.recurring.filter(item=>item.active!==false);
-    const recurringExpenseCount=activeRecurring.filter(item=>item.type==='expense').length;
-    const recurringIncomeCount=activeRecurring.filter(item=>item.type==='income').length;
-    const recurringSummary=activeRecurring.length
-      ? `${recurringExpenseCount?`고정지출 ${recurringExpenseCount}개`:''}${recurringExpenseCount&&recurringIncomeCount?' · ':''}${recurringIncomeCount?`반복수입 ${recurringIncomeCount}개`:''}`
-      : '이자·학원비·보험료 등을 매월 자동 기록';
-    els.main.innerHTML=`
-      <section class="section">
-        <div class="section-head"><div><h2>고정지출</h2><p>매월 입력하지 않아도 자동 반영</p></div><button class="text-button" data-action="recurring-settings">관리</button></div>
-        <div class="card">
-          <button class="setting-row" data-action="recurring-settings" style="width:100%;border:0;background:transparent;text-align:left">
-            <span class="row-icon"><i class="ph-duotone ph-arrows-clockwise"></i></span>
-            <span class="setting-copy"><strong>${activeRecurring.length?`${activeRecurring.length}개 등록됨`:'고정지출을 등록해보세요'}</strong><span>${esc(recurringSummary)}</span></span>
-            <i class="ph ph-caret-right" style="color:var(--text-2)"></i>
-          </button>
-        </div>
-      </section>
-      <section class="section">
-        <div class="section-head"><div><h2>자동차</h2><p>기본 항목은 엔진오일만</p></div><button class="text-button" data-action="add-vehicle">차량 추가</button></div>
-        ${vehicles.length?vehicles.map(renderVehicleCard).join('<div style="height:10px"></div>'):empty('car','등록된 차량이 없습니다','차량을 추가하면 교체거리 기준으로 관리할 수 있습니다.')}
-      </section>
-      <section class="section">
-        <div class="section-head"><div><h2>직접 관리</h2><p>다른 앱이 관리하지 않는 것만 필요할 때 추가</p></div><button class="text-button" data-action="add-custom">추가</button></div>
-        ${state.customManage.length?`<div class="list">${state.customManage.map(item=>`<button class="list-row" data-custom="${item.id}" style="width:100%;border-left:0;border-right:0;border-top:0;text-align:left;color:inherit;background:transparent"><span class="row-icon"><i class="ph-duotone ph-notebook"></i></span><span class="row-main"><span class="row-title">${esc(item.name)}</span><span class="row-meta">${esc(item.note||'직접 관리 항목')}</span></span><i class="ph ph-caret-right" style="color:var(--text-2)"></i></button>`).join('')}</div>`:empty('plus-circle','직접 관리 항목이 없습니다','필요할 때만 추가하면 됩니다.')}
+    let content='';
+    if(manageView==='recurring'){
+      content=`<section class="section manage-screen-section">
+        <div class="section-head"><div><h2>고정지출과 반복수입</h2><p>매월 입력하지 않아도 자동으로 기록</p></div><button class="text-button" data-action="add-recurring">추가</button></div>
+        ${state.recurring.length?`<div class="list">${state.recurring.map(item=>{
+          const sign=item.type==='income'?'+':'-';
+          const status=item.active===false?'일시정지':(item.autoPost?'자동 기록':'직접 확인');
+          return `<button class="list-row screen-list-action ${item.active===false?'is-paused':''}" data-recurring="${escAttr(item.id)}"><span class="row-icon"><i class="ph-duotone ph-arrows-clockwise"></i></span><span class="row-main"><span class="row-title">${esc(item.note||item.category)}</span><span class="row-meta">매월 ${Number(item.day)||1}일 · ${status}</span></span><span class="row-trailing"><span class="row-amount ${item.type}">${sign}${fmtMoney(item.amount)}</span><i class="ph ph-caret-right"></i></span></button>`;
+        }).join('')}</div>`:empty('arrows-clockwise','등록된 고정지출이 없습니다','이자·학원비·보험료 등을 한 번만 등록하세요.')}
       </section>`;
+    }
+    if(manageView==='vehicles'){
+      content=`<section class="section manage-screen-section">
+        <div class="section-head"><div><h2>자동차</h2><p>주행거리와 교체 항목을 차량별로 관리</p></div><button class="text-button" data-action="add-vehicle">차량 추가</button></div>
+        ${vehicles.length?vehicles.map(renderVehicleCard).join('<div style="height:10px"></div>'):empty('car','등록된 차량이 없습니다','차량을 추가하면 교체거리 기준으로 관리할 수 있습니다.')}
+      </section>`;
+    }
+    if(manageView==='custom'){
+      content=`<section class="section manage-screen-section">
+        <div class="section-head"><div><h2>직접 관리</h2><p>가족에게 필요한 항목만 따로 기록</p></div><button class="text-button" data-action="add-custom">추가</button></div>
+        ${state.customManage.length?`<div class="list">${state.customManage.map(item=>`<button class="list-row screen-list-action" data-custom="${item.id}"><span class="row-icon"><i class="ph-duotone ph-notebook"></i></span><span class="row-main"><span class="row-title">${esc(item.name)}</span><span class="row-meta">${esc(item.note||'직접 관리 항목')}</span></span><i class="ph ph-caret-right"></i></button>`).join('')}</div>`:empty('plus-circle','직접 관리 항목이 없습니다','필요할 때만 추가하면 됩니다.')}
+      </section>`;
+    }
+    els.main.innerHTML=`
+      <nav class="manage-destinations" aria-label="관리 항목">
+        <button type="button" class="manage-destination ${manageView==='recurring'?'active':''}" data-manage-view="recurring" aria-current="${manageView==='recurring'?'page':'false'}"><i class="ph-duotone ph-arrows-clockwise"></i><span>고정지출</span><small>${activeRecurring.length}개</small></button>
+        <button type="button" class="manage-destination ${manageView==='vehicles'?'active':''}" data-manage-view="vehicles" aria-current="${manageView==='vehicles'?'page':'false'}"><i class="ph-duotone ph-car"></i><span>자동차</span><small>${vehicles.length}대</small></button>
+        <button type="button" class="manage-destination ${manageView==='custom'?'active':''}" data-manage-view="custom" aria-current="${manageView==='custom'?'page':'false'}"><i class="ph-duotone ph-notebook"></i><span>직접 관리</span><small>${state.customManage.length}개</small></button>
+      </nav>
+      ${content}`;
+    els.main.querySelectorAll('[data-manage-view]').forEach(btn=>btn.addEventListener('click',()=>{manageView=btn.dataset.manageView;render();}));
+    els.main.querySelector('[data-action="add-recurring"]')?.addEventListener('click',()=>openRecurringEditSheet());
     els.main.querySelector('[data-action="add-vehicle"]')?.addEventListener('click',()=>openVehicleSheet());
     els.main.querySelector('[data-action="add-custom"]')?.addEventListener('click',openCustomManageSheet);
-    els.main.querySelectorAll('[data-action="recurring-settings"]').forEach(btn=>btn.addEventListener('click',openRecurringSheet));
+    els.main.querySelectorAll('[data-recurring]').forEach(btn=>btn.addEventListener('click',()=>openRecurringEditSheet(btn.dataset.recurring)));
     els.main.querySelectorAll('[data-vehicle]').forEach(btn=>btn.addEventListener('click',()=>openVehicleDetail(btn.dataset.vehicle)));
     els.main.querySelectorAll('[data-custom]').forEach(btn=>btn.addEventListener('click',()=>openCustomDetail(btn.dataset.custom)));
   }
