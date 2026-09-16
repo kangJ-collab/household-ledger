@@ -30,6 +30,8 @@
     navItems: [...document.querySelectorAll('.nav-item')],
     backdrop: document.getElementById('backdrop'),
     sheet: document.getElementById('sheet'),
+    sheetDragHandle: document.getElementById('sheetDragHandle'),
+    sheetHead: document.getElementById('sheetHead'),
     sheetTitle: document.getElementById('sheetTitle'),
     sheetEyebrow: document.getElementById('sheetEyebrow'),
     sheetBody: document.getElementById('sheetBody'),
@@ -60,6 +62,11 @@
   let contextMenuTransactionId = null;
   let contextMenuAnchor = null;
   let contextMenuPoint = null;
+  let sheetDetents = [];
+  let sheetDetentIndex = 1;
+  let sheetDragState = null;
+  let sheetResizeTimer = null;
+  let sheetFocusTimer = null;
 
   void boot();
 
@@ -126,6 +133,7 @@
     els.sheetCloseBtn.addEventListener('click', closeSheet);
     els.sheetBackBtn.addEventListener('click',()=>{const action=sheetBackAction; if(action)action();});
     els.backdrop.addEventListener('click', closeSheet);
+    bindSheetDetentEvents();
     els.contextMenuBackdrop.addEventListener('click',event=>{
       event.preventDefault();
       event.stopPropagation();
@@ -137,7 +145,10 @@
       else if (!els.sheet.hidden) closeSheet();
       else if (transactionSearchOpen) closeTransactionSearch();
     });
-    window.addEventListener('resize',()=>closeTransactionContextMenu(false));
+    window.addEventListener('resize',()=>{
+      closeTransactionContextMenu(false);
+      scheduleSheetDetentRefresh();
+    });
     window.addEventListener('scroll',()=>closeTransactionContextMenu(false),{passive:true});
     const handleSystemThemeChange = () => {
       if ((state.preferences?.theme || 'system') === 'system') applyTheme();
@@ -1222,8 +1233,175 @@
   function hexRgb(hex){hex=hex.replace('#','');if(hex.length===3)hex=hex.split('').map(x=>x+x).join('');return [0,2,4].map(i=>parseInt(hex.slice(i,i+2),16));}
   function contrastText(hex){const [r,g,b]=hexRgb(hex).map(v=>v/255);const lum=.2126*r+.7152*g+.0722*b;return lum>.57?'#101416':'#ffffff';}
 
+  function bindSheetDetentEvents(){
+    els.sheetDragHandle.addEventListener('pointerdown',beginSheetDrag);
+    els.sheetHead.addEventListener('pointerdown',beginSheetDrag);
+    document.addEventListener('pointermove',moveSheetDrag,{passive:false});
+    document.addEventListener('pointerup',finishSheetDrag);
+    document.addEventListener('pointercancel',event=>finishSheetDrag(event,true));
+    els.sheetDragHandle.addEventListener('keydown',event=>{
+      if(els.sheet.hidden||!sheetDetents.length)return;
+      let next=null;
+      if(event.key==='ArrowUp'||event.key==='PageUp')next=Math.min(sheetDetents.length-1,sheetDetentIndex+1);
+      if(event.key==='ArrowDown'||event.key==='PageDown')next=Math.max(0,sheetDetentIndex-1);
+      if(event.key==='Home')next=0;
+      if(event.key==='End')next=sheetDetents.length-1;
+      if(next==null)return;
+      event.preventDefault();
+      setSheetDetent(next);
+    });
+  }
+
+  function calculateSheetDetents(){
+    const viewport=Math.max(320,window.innerHeight||document.documentElement.clientHeight||320);
+    const maximum=Math.max(260,Math.round(viewport*.92));
+    const candidates=[
+      {name:'compact',height:Math.min(maximum,Math.max(220,Math.round(viewport*.42)))},
+      {name:'medium',height:Math.min(maximum,Math.max(220,Math.round(viewport*.68)))},
+      {name:'large',height:maximum}
+    ];
+    return candidates.reduce((list,item)=>{
+      const previous=list[list.length-1];
+      if(!previous||item.height-previous.height>=24)list.push(item);
+      else if(item.name==='large'&&item.height>previous.height)list.push(item);
+      return list;
+    },[]);
+  }
+
+  function configureSheetDetents(preferredName=null,preserve=false){
+    if(els.sheet.hidden)return;
+    sheetDetents=calculateSheetDetents();
+    let nextIndex=-1;
+    if(preserve&&preferredName)nextIndex=sheetDetents.findIndex(item=>item.name===preferredName);
+    if(nextIndex<0&&preserve)nextIndex=Math.min(sheetDetentIndex,sheetDetents.length-1);
+    if(nextIndex<0){
+      const sheetStyle=getComputedStyle(els.sheet);
+      const naturalHeight=els.sheetDragHandle.offsetHeight+els.sheetHead.offsetHeight+els.sheetBody.scrollHeight+(parseFloat(sheetStyle.paddingBottom)||0)+2;
+      nextIndex=naturalHeight<=sheetDetents[0].height+18?0:Math.min(1,sheetDetents.length-1);
+    }
+    setSheetDetent(nextIndex,false);
+  }
+
+  function setSheetDetent(index,animate=true){
+    if(!sheetDetents.length)return;
+    sheetDetentIndex=Math.max(0,Math.min(Number(index)||0,sheetDetents.length-1));
+    const detent=sheetDetents[sheetDetentIndex];
+    const labels={compact:'작은 높이',medium:'중간 높이',large:'전체 높이'};
+    if(!animate)els.sheet.classList.add('sheet-no-transition');
+    els.sheet.style.setProperty('--sheet-height',`${detent.height}px`);
+    els.sheet.dataset.detent=detent.name;
+    els.sheetDragHandle.setAttribute('aria-valuemin','0');
+    els.sheetDragHandle.setAttribute('aria-valuemax',String(sheetDetents.length-1));
+    els.sheetDragHandle.setAttribute('aria-valuenow',String(sheetDetentIndex));
+    els.sheetDragHandle.setAttribute('aria-valuetext',labels[detent.name]);
+    els.sheetDragHandle.title=`위아래로 드래그해 높이 조절 · ${labels[detent.name]}`;
+    if(!animate)requestAnimationFrame(()=>els.sheet.classList.remove('sheet-no-transition'));
+  }
+
+  function beginSheetDrag(event){
+    if(els.sheet.hidden||sheetDragState||event.isPrimary===false)return;
+    if(event.pointerType==='mouse'&&event.button!==0)return;
+    if(event.currentTarget===els.sheetHead&&event.target.closest('.sheet-head-actions'))return;
+    if(!sheetDetents.length)configureSheetDetents();
+    const now=performance.now();
+    sheetDragState={
+      pointerId:event.pointerId,
+      source:event.currentTarget,
+      startY:event.clientY,
+      lastY:event.clientY,
+      lastTime:now,
+      velocityY:0,
+      startHeight:els.sheet.getBoundingClientRect().height,
+      startIndex:sheetDetentIndex,
+      rawHeight:els.sheet.getBoundingClientRect().height,
+      moved:false
+    };
+    try{event.currentTarget.setPointerCapture(event.pointerId);}catch(_){}
+    els.sheet.classList.add('is-dragging');
+    document.body.classList.add('sheet-is-dragging');
+    event.preventDefault();
+  }
+
+  function moveSheetDrag(event){
+    const drag=sheetDragState;
+    if(!drag||event.pointerId!==drag.pointerId)return;
+    const now=performance.now();
+    const elapsed=Math.max(1,now-drag.lastTime);
+    drag.velocityY=(event.clientY-drag.lastY)/elapsed;
+    drag.lastY=event.clientY;
+    drag.lastTime=now;
+    const delta=event.clientY-drag.startY;
+    if(Math.abs(delta)>3)drag.moved=true;
+    const minimum=sheetDetents[0].height;
+    const maximum=sheetDetents[sheetDetents.length-1].height;
+    const raw=drag.startHeight-delta;
+    drag.rawHeight=raw;
+    let next=raw;
+    if(raw<minimum)next=minimum-(minimum-raw)*.22;
+    if(raw>maximum)next=maximum+(raw-maximum)*.08;
+    next=Math.max(minimum-78,Math.min(maximum+24,next));
+    els.sheet.style.setProperty('--sheet-height',`${Math.round(next)}px`);
+    const range=Math.max(1,maximum-minimum);
+    const progress=Math.max(0,Math.min(1,(next-minimum)/range));
+    els.backdrop.style.opacity=String(.72+progress*.28);
+    event.preventDefault();
+  }
+
+  function nearestSheetDetent(height){
+    let nearest=0;
+    let distance=Infinity;
+    sheetDetents.forEach((item,index)=>{
+      const nextDistance=Math.abs(item.height-height);
+      if(nextDistance<distance){distance=nextDistance;nearest=index;}
+    });
+    return nearest;
+  }
+
+  function finishSheetDrag(event,cancelled=false){
+    const drag=sheetDragState;
+    if(!drag||event.pointerId!==drag.pointerId)return;
+    try{if(drag.source.hasPointerCapture(event.pointerId))drag.source.releasePointerCapture(event.pointerId);}catch(_){}
+    sheetDragState=null;
+    els.sheet.classList.remove('is-dragging');
+    document.body.classList.remove('sheet-is-dragging');
+    els.backdrop.style.opacity='';
+    if(cancelled||!drag.moved){setSheetDetent(drag.startIndex);return;}
+    const delta=event.clientY-drag.startY;
+    const minimum=sheetDetents[0].height;
+    if(drag.startIndex===0&&delta>24&&(drag.rawHeight<minimum-54||drag.velocityY>.75)){
+      closeSheet();
+      return;
+    }
+    const renderedHeight=els.sheet.getBoundingClientRect().height;
+    let target=nearestSheetDetent(renderedHeight);
+    if(drag.velocityY<-.45)target=Math.max(target,Math.min(sheetDetents.length-1,drag.startIndex+1));
+    if(drag.velocityY>.45)target=Math.min(target,Math.max(0,drag.startIndex-1));
+    setSheetDetent(target);
+  }
+
+  function scheduleSheetDetentRefresh(){
+    if(els.sheet.hidden)return;
+    clearTimeout(sheetResizeTimer);
+    const preferred=els.sheet.dataset.detent;
+    sheetResizeTimer=setTimeout(()=>configureSheetDetents(preferred,true),90);
+  }
+
+  function resetSheetDrag(){
+    const drag=sheetDragState;
+    if(drag){
+      try{if(drag.source.hasPointerCapture(drag.pointerId))drag.source.releasePointerCapture(drag.pointerId);}catch(_){}
+    }
+    sheetDragState=null;
+    els.sheet.classList.remove('is-dragging','sheet-no-transition');
+    document.body.classList.remove('sheet-is-dragging');
+    els.backdrop.style.opacity='';
+  }
+
   function openSheet(title,eyebrow,html,backAction=null){
     closeTransactionContextMenu(false);
+    const wasOpen=!els.sheet.hidden;
+    const previousDetent=els.sheet.dataset.detent||null;
+    resetSheetDrag();
     sheetBackAction=typeof backAction==='function'?backAction:null;
     els.sheetTitle.textContent=title;
     els.sheetEyebrow.textContent=eyebrow||'';
@@ -1232,9 +1410,25 @@
     els.sheet.hidden=false;
     els.backdrop.hidden=false;
     document.body.style.overflow='hidden';
-    setTimeout(()=>els.sheetBody.querySelector('[autofocus]')?.focus(),30);
+    requestAnimationFrame(()=>configureSheetDetents(previousDetent,wasOpen));
+    clearTimeout(sheetFocusTimer);
+    sheetFocusTimer=setTimeout(()=>els.sheetBody.querySelector('[autofocus]')?.focus(),60);
   }
-  function closeSheet(){sheetBackAction=null;els.sheetBackBtn.hidden=true;els.sheet.hidden=true;els.backdrop.hidden=true;els.sheetBody.innerHTML='';document.body.style.overflow='';}
+  function closeSheet(){
+    clearTimeout(sheetFocusTimer);
+    clearTimeout(sheetResizeTimer);
+    resetSheetDrag();
+    sheetBackAction=null;
+    sheetDetents=[];
+    sheetDetentIndex=1;
+    els.sheetBackBtn.hidden=true;
+    els.sheet.hidden=true;
+    els.backdrop.hidden=true;
+    els.sheetBody.innerHTML='';
+    els.sheet.style.removeProperty('--sheet-height');
+    delete els.sheet.dataset.detent;
+    document.body.style.overflow='';
+  }
   function showToast(msg){clearTimeout(toastTimer);els.toast.textContent=msg;els.toast.classList.add('show');toastTimer=setTimeout(()=>els.toast.classList.remove('show'),1800);}
   function empty(icon,title,desc){return `<div class="card empty-state"><i class="ph-duotone ph-${icon}"></i><strong>${title}</strong><p>${desc}</p></div>`;}
   function esc(v=''){return String(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}

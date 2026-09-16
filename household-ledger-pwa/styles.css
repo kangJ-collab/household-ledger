@@ -1793,3 +1793,85 @@ html[data-style="compact"] .transaction-upcoming{
 /* ==================================================================
    END TRANSACTION CONTEXT MENU v1
    ================================================================== */
+
+/* ==================================================================
+   SHEET DETENT v1
+   ================================================================== */
+.backdrop{transition:opacity .18s ease}
+.sheet{
+  height:var(--sheet-height,68dvh);
+  min-height:220px;
+  max-height:calc(100dvh - max(12px,env(safe-area-inset-top,0px)));
+  overflow:hidden;
+  transition:height .3s cubic-bezier(.22,.78,.22,1);
+  will-change:height;
+}
+.sheet.is-dragging,
+.sheet.sheet-no-transition{transition:none}
+.sheet.is-dragging{cursor:grabbing}
+.sheet-drag-zone{
+  width:100%;
+  height:36px;
+  min-height:36px;
+  flex:none;
+  display:grid;
+  place-items:center;
+  padding:0;
+  outline:0;
+  cursor:grab;
+  touch-action:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.sheet-drag-zone:focus-visible{
+  outline:2px solid color-mix(in srgb,var(--accent) 56%,transparent);
+  outline-offset:-4px;
+  border-radius:22px 22px 0 0;
+}
+.sheet-handle{
+  display:block;
+  width:42px;
+  height:5px;
+  margin:0;
+  border-radius:999px;
+  background:color-mix(in srgb,var(--text-2) 42%,var(--line));
+  pointer-events:none;
+  transition:width .2s ease,background .2s ease,transform .2s ease;
+}
+.sheet-drag-zone:hover .sheet-handle,
+.sheet-drag-zone:focus-visible .sheet-handle,
+.sheet.is-dragging .sheet-handle{
+  width:50px;
+  background:color-mix(in srgb,var(--accent) 62%,var(--text-2));
+}
+.sheet.is-dragging .sheet-handle{transform:scaleY(1.12)}
+.sheet-head{
+  flex:none;
+  cursor:grab;
+  touch-action:none;
+  user-select:none;
+}
+.sheet-head-actions{
+  cursor:default;
+  touch-action:manipulation;
+}
+.sheet-body{
+  min-height:0;
+  flex:1 1 auto;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+}
+body.sheet-is-dragging{
+  cursor:grabbing;
+  user-select:none;
+}
+
+@media (max-height:560px){
+  .sheet{min-height:200px}
+  .sheet-drag-zone{height:30px;min-height:30px}
+}
+
+/* ==================================================================
+   END SHEET DETENT v1
+   ================================================================== */
