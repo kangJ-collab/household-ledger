@@ -771,6 +771,19 @@ button,input,select,textarea{touch-action:manipulation}
   background:transparent;
   font-size:34px;
   font-weight:750;
+  -webkit-appearance:none;
+  appearance:none;
+  outline:0;
+  box-shadow:none;
+}
+.input.amount-input:focus,
+.input.amount-input:focus-visible{
+  border:0;
+  border-bottom:1px solid var(--accent);
+  border-radius:0;
+  background:transparent;
+  outline:0;
+  box-shadow:none;
 }
 .switch-row{min-height:58px;padding:8px 1px}
 .switch-copy strong{font-size:14px;font-weight:620}
