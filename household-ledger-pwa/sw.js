@@ -1,4 +1,4 @@
-const CACHE = 'household-ledger-v16-tabbar-opacity';
+const CACHE = 'household-ledger-v17-sheet-morphing';
 const LOCAL = ['./','./index.html','./styles.css','./app.js','./icons.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(LOCAL)).then(() => self.skipWaiting()));

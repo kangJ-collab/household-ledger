@@ -18,6 +18,7 @@
   const publicDemoHost = 'kangj-collab.github.io';
   const publicDemoMode = window.location.hostname === publicDemoHost;
   const systemThemeQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const reduceMotionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 
   const els = {
     main: document.getElementById('mainContent'),
@@ -72,6 +73,11 @@
   let bottomNavLastScrollY = Math.max(0,window.scrollY||0);
   let bottomNavScrollAccumulator = 0;
   let bottomNavScrollRaf = null;
+  let lastSheetTrigger = null;
+  let lastSheetTriggerAt = 0;
+  let sheetMorphOrigin = null;
+  let activeSheetMorph = null;
+  let sheetMorphSequence = 0;
 
   void boot();
 
@@ -126,6 +132,12 @@
   }
 
   function bindAppEvents(){
+    document.addEventListener('click',event=>{
+      const trigger=event.target instanceof Element?event.target.closest('button,[role="button"]'):null;
+      if(!trigger)return;
+      lastSheetTrigger=trigger;
+      lastSheetTriggerAt=performance.now();
+    },true);
     els.navItems.forEach(btn => btn.addEventListener('click', () => {
       closeTransactionContextMenu(false);
       setBottomNavCompact(false);
@@ -168,6 +180,11 @@
       if (typeof systemThemeQuery.addEventListener === 'function') systemThemeQuery.addEventListener('change', handleSystemThemeChange);
       else if (typeof systemThemeQuery.addListener === 'function') systemThemeQuery.addListener(handleSystemThemeChange);
     }
+    const handleReducedMotionChange=()=>applyMotionPreference();
+    if(reduceMotionQuery){
+      if(typeof reduceMotionQuery.addEventListener==='function')reduceMotionQuery.addEventListener('change',handleReducedMotionChange);
+      else if(typeof reduceMotionQuery.addListener==='function')reduceMotionQuery.addListener(handleReducedMotionChange);
+    }
   }
 
   function defaultState(){
@@ -178,7 +195,7 @@
     return {
       version:2,
       profile:{ householdName:'우리집', mode:'couple', defaultShared:true, memberName:'나', partnerName:'배우자' },
-      preferences:{ style:'compact', theme:'system', accent:'slate', customAccent:'#315d73', tabBarOpacity:68 },
+      preferences:{ style:'compact', theme:'system', accent:'slate', customAccent:'#315d73', tabBarOpacity:68, morphingAnimations:true },
       budget:{ monthly:2000000, byCategory:{'식비':600000,'외식':250000,'쇼핑':200000,'차량':300000} },
       expenseCategories:['식비','외식','장보기','쇼핑','생활','교통','차량','주거','교육','의료','보험','구독','경조사','여행','기타'],
       incomeCategories:['급여','상여','성과급','환급','용돈','기타'],
@@ -221,9 +238,10 @@
 
   function normalizeState(){
     state.profile ||= {householdName:'우리집',mode:'couple',defaultShared:true,memberName:'나',partnerName:'배우자'};
-    state.preferences ||= {style:'compact',theme:'system',accent:'slate',customAccent:'#315d73',tabBarOpacity:68};
+    state.preferences ||= {style:'compact',theme:'system',accent:'slate',customAccent:'#315d73',tabBarOpacity:68,morphingAnimations:true};
     const tabBarOpacity=Number(state.preferences.tabBarOpacity);
     state.preferences.tabBarOpacity=Number.isFinite(tabBarOpacity)?Math.max(0,Math.min(100,tabBarOpacity)):68;
+    if(typeof state.preferences.morphingAnimations!=='boolean')state.preferences.morphingAnimations=true;
     state.budget ||= {monthly:0,byCategory:{}};
     const legacyCategories=Array.isArray(state.categories)?state.categories:null;
     state.expenseCategories ||= legacyCategories||['식비','외식','장보기','쇼핑','생활','교통','차량','주거','교육','의료','보험','구독','경조사','여행','기타'];
@@ -522,7 +540,7 @@
           delete btn.dataset.suppressClick;
           return;
         }
-        openTransactionDetail(btn.dataset.txOpen);
+        openTransactionDetail(btn.dataset.txOpen,btn);
       });
       if(context)wireTransactionLongPress(btn);
     });
@@ -612,14 +630,16 @@
     const fromPrivateSheet=!els.sheet.hidden&&els.sheetTitle.textContent==='비공개 내역'&&contextMenuAnchor&&els.sheetBody.contains(contextMenuAnchor);
     if(!item){closeTransactionContextMenu(false);return;}
     if(action==='edit'){
+      const morphSource=contextMenuAnchor;
       closeTransactionContextMenu(false);
-      openTransactionSheet(id);
+      openTransactionSheet(id,null,'create',morphSource);
       return;
     }
     if(action==='duplicate'){
       const draft={type:item.type,amount:item.amount,category:item.category,note:item.note,paymentMethod:item.paymentMethod,date:item.date,shared:item.shared};
+      const morphSource=contextMenuAnchor;
       closeTransactionContextMenu(false);
-      openTransactionSheet(null,draft,'duplicate');
+      openTransactionSheet(null,draft,'duplicate',morphSource);
       return;
     }
     if(action==='privacy'){
@@ -965,11 +985,11 @@
     </button>`;
   }
 
-  function openTransactionSheet(existingId=null,draft=null,mode='create'){
+  function openTransactionSheet(existingId=null,draft=null,mode='create',morphSource=null){
     const existing=existingId?state.transactions.find(t=>t.id===existingId):null;
     const duplicate=mode==='duplicate'&&!existing;
     const data=existing||draft||{type:'expense',amount:'',category:state.expenseCategories[0],note:'',paymentMethod:state.paymentMethods[0],date:isoToday,shared:state.profile.defaultShared!==false};
-    openSheet(existing?'내역 수정':duplicate?'내역 복제':'빠른 입력',duplicate?'내용 확인 후 저장':'가계부',transactionForm(data,!!existing,duplicate));
+    openSheet(existing?'내역 수정':duplicate?'내역 복제':'빠른 입력',duplicate?'내용 확인 후 저장':'가계부',transactionForm(data,!!existing,duplicate),null,morphSource);
     wireTransactionForm(existingId,mode);
   }
 
@@ -1046,7 +1066,7 @@
     });
   }
 
-  function openTransactionDetail(id){ openTransactionSheet(id); }
+  function openTransactionDetail(id,morphSource=null){ openTransactionSheet(id,null,'create',morphSource); }
 
   function openBudgetSheet(backAction=null){
     openSheet('예산 설정','이번 달',`<form id="budgetForm"><div class="form-section"><label class="form-label">전체 생활예산</label><input id="monthlyBudget" class="input" inputmode="numeric" value="${state.budget.monthly||''}" placeholder="2000000"></div><div class="form-section"><div class="form-label"><span>카테고리별 예산</span><span>필요한 것만</span></div>${state.expenseCategories.map(c=>`<div class="setting-row" style="padding-left:0;padding-right:0"><strong style="font-size:12px">${esc(c)}</strong><input class="input cat-budget" data-cat="${escAttr(c)}" inputmode="numeric" value="${state.budget.byCategory[c]||''}" placeholder="설정 안 함" style="width:150px;min-height:40px;text-align:right"></div>`).join('')}</div><button class="primary-button">저장</button></form>`,backAction);
@@ -1134,6 +1154,7 @@
     const pref=state.preferences;
     const tabBarOpacity=Math.max(0,Math.min(100,Number(pref.tabBarOpacity)||0));
     const tabBarOpacityText=tabBarOpacityLabel(tabBarOpacity);
+    const motionReduced=reduceMotionQuery?.matches===true;
     const memberRole=currentUser?.role==='OWNER'?'관리자':'배우자';
     openSheet('설정','우리집 가계부',`
       <div class="settings-group"><p class="settings-title">사용 방식</p><div class="option-grid" id="modeOptions">${[['solo','나 혼자'],['couple','부부 공동'],['group','여러 명']].map(([v,l])=>`<button class="option ${state.profile.mode===v?'active':''}" data-mode="${v}">${l}</button>`).join('')}</div></div>
@@ -1143,6 +1164,7 @@
         <div class="tabbar-opacity-preview-stage" aria-hidden="true"><div class="tabbar-opacity-preview-content"><span></span><span></span><span></span></div><div class="tabbar-material-preview"><i class="ph ph-house"></i><i class="ph ph-receipt"></i><i class="ph ph-plus"></i><i class="ph ph-chart-donut"></i><i class="ph ph-wrench"></i></div></div>
         <label class="tabbar-opacity-control"><span class="sr-only">하단 내비게이션 배경 선명도</span><input id="tabBarOpacity" type="range" min="0" max="100" step="1" value="${tabBarOpacity}" aria-valuetext="${tabBarOpacityText}"><span class="tabbar-opacity-labels" aria-hidden="true"><span>완전 투명</span><span>선명한 배경</span></span></label>
       </div></div>
+      <div class="settings-group"><p class="settings-title">화면 동작</p><div class="settings-card"><label class="setting-row morphing-setting"><span class="switch-copy"><strong>모핑 애니메이션</strong><span>${motionReduced?'iPhone의 동작 줄이기 설정으로 현재 자동 중지되어 있습니다.':'버튼이 입력·설정 Sheet로 자연스럽게 이어집니다.'}</span></span><input id="morphingAnimations" class="toggle" type="checkbox" ${pref.morphingAnimations!==false?'checked':''} aria-label="모핑 애니메이션"></label></div></div>
       <div class="settings-group"><p class="settings-title">화면 테마</p><div class="option-grid" id="themeOptions">${[['system','시스템'],['light','라이트'],['dark','다크'],['ivory','아이보리'],['warm-ivory','웜 아이보리'],['mist','미스트'],['leaf','리프'],['rose','로즈']].map(([v,l])=>`<button class="option ${pref.theme===v?'active':''}" data-theme="${v}">${l}</button>`).join('')}</div></div>
       <div class="settings-group"><p class="settings-title">강조색</p><div class="accent-grid">${Object.entries(accentPresets).map(([name,color])=>`<button class="accent-swatch ${pref.accent===name?'active':''}" data-accent="${name}" aria-label="${name}" style="background:${color}"></button>`).join('')}<label class="accent-swatch ${pref.accent==='custom'?'active':''}" style="overflow:hidden;position:relative;background:${pref.customAccent||'#315d73'}"><input id="customAccent" type="color" value="${pref.customAccent||'#315d73'}" style="position:absolute;inset:-15px;width:80px;height:80px;opacity:0;cursor:pointer"></label></div></div>
       <div class="settings-group"><p class="settings-title">가계부</p><div class="settings-card">
@@ -1185,6 +1207,11 @@
     tabBarOpacityInput.addEventListener('change',()=>{
       clearTimeout(tabBarOpacitySaveTimer);
       updateTabBarOpacity(true);
+    });
+    document.getElementById('morphingAnimations').addEventListener('change',event=>{
+      state.preferences.morphingAnimations=event.target.checked;
+      applyMotionPreference();
+      save();
     });
     document.getElementById('budgetSetting').addEventListener('click',()=>openBudgetSheet(openSettingsSheet));
     document.getElementById('recurringSetting').addEventListener('click',()=>openRecurringSheet(openSettingsSheet));
@@ -1314,6 +1341,7 @@
     document.documentElement.style.setProperty('--accent-soft',soft);
     document.documentElement.style.setProperty('--accent-contrast',contrastText(accent));
     applyTabBarAppearance();
+    applyMotionPreference();
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content',resolved==='dark'?'#101416':getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()||'#f3f5f6');
     document.querySelector('meta[name="color-scheme"]')?.setAttribute('content',resolved==='dark'?'dark':'light');
   }
@@ -1339,6 +1367,17 @@
     root.style.setProperty('--tabbar-inset-color',`rgba(255,255,255,${(.5*strength).toFixed(3)})`);
     root.style.setProperty('--tabbar-blur',`${Math.min(30,Math.round(value*24/68))}px`);
     root.style.setProperty('--tabbar-saturation',`${(1+.74*strength).toFixed(2)}`);
+  }
+
+  function applyMotionPreference(){
+    const requested=state.preferences?.morphingAnimations!==false;
+    const enabled=requested&&reduceMotionQuery?.matches!==true;
+    document.documentElement.dataset.morphing=requested?'on':'off';
+    document.documentElement.dataset.motion=enabled?'full':'reduced';
+  }
+
+  function morphingEnabled(){
+    return state.preferences?.morphingAnimations!==false&&reduceMotionQuery?.matches!==true&&typeof Element.prototype.animate==='function';
   }
 
   function mix(a,b,ratio){
@@ -1511,9 +1550,190 @@
     els.backdrop.style.opacity='';
   }
 
-  function openSheet(title,eyebrow,html,backAction=null){
-    closeTransactionContextMenu(false);
+  function plainRect(rect){
+    return {left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom,width:rect.width,height:rect.height};
+  }
+
+  function validMorphRect(rect){
+    return rect&&rect.width>=8&&rect.height>=8&&rect.right>0&&rect.bottom>0&&rect.left<window.innerWidth&&rect.top<window.innerHeight;
+  }
+
+  function resolveSheetMorphSource(explicitSource=null){
+    let source=explicitSource;
+    if(!source&&performance.now()-lastSheetTriggerAt<900)source=lastSheetTrigger;
+    if(!source&&document.activeElement instanceof Element)source=document.activeElement;
+    if(!(source instanceof Element)||!source.isConnected||source.closest('#sheet'))return null;
+    const surface=source.closest('.transaction-row,.manage-card,.card,.icon-button,.nav-add')||source;
+    const rect=plainRect(surface.getBoundingClientRect());
+    if(!validMorphRect(rect))return null;
+    const style=getComputedStyle(surface);
+    const icon=source.querySelector('i,svg')||surface.querySelector('i,svg');
+    let backgroundColor=style.backgroundColor;
+    if(backgroundColor==='transparent'||backgroundColor==='rgba(0, 0, 0, 0)')backgroundColor=getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()||'#ffffff';
+    return {
+      element:surface,
+      rect,
+      borderRadius:style.borderRadius||'18px',
+      backgroundColor,
+      boxShadow:style.boxShadow==='none'?'0 2px 10px rgba(0,0,0,.08)':style.boxShadow,
+      color:style.color,
+      iconMarkup:icon?.outerHTML||'',
+      iconFontSize:icon?getComputedStyle(icon).fontSize:'20px',
+      iconRect:icon&&validMorphRect(icon.getBoundingClientRect())?plainRect(icon.getBoundingClientRect()):rect
+    };
+  }
+
+  function currentSheetMorphTarget(origin){
+    if(origin?.element?.isConnected){
+      const current=resolveSheetMorphSource(origin.element);
+      if(current)return current;
+    }
+    return origin&&validMorphRect(origin.rect)?origin:null;
+  }
+
+  function createSheetMorphClone(rect){
+    const clone=els.sheet.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.removeAttribute('role');
+    clone.removeAttribute('aria-modal');
+    clone.removeAttribute('aria-labelledby');
+    clone.setAttribute('aria-hidden','true');
+    clone.hidden=false;
+    clone.classList.remove('is-dragging','sheet-no-transition','sheet-morph-hidden');
+    clone.classList.add('sheet-morph-clone');
+    clone.querySelectorAll('[id]').forEach(node=>node.removeAttribute('id'));
+    clone.querySelectorAll('[autofocus]').forEach(node=>node.removeAttribute('autofocus'));
+    Object.assign(clone.style,{
+      left:`${rect.left}px`,
+      top:`${rect.top}px`,
+      right:'auto',
+      bottom:'auto',
+      width:`${rect.width}px`,
+      height:`${rect.height}px`,
+      maxHeight:'none',
+      transform:'none'
+    });
+    clone.style.setProperty('--sheet-height',`${rect.height}px`);
+    document.body.appendChild(clone);
+    const cloneBody=clone.querySelector('.sheet-body');
+    if(cloneBody)cloneBody.scrollTop=els.sheetBody.scrollTop;
+    return clone;
+  }
+
+  function sheetMorphTransform(sheetRect,sourceRect){
+    const scaleX=Math.max(.04,sourceRect.width/sheetRect.width);
+    const scaleY=Math.max(.04,sourceRect.height/sheetRect.height);
+    return {
+      value:`translate3d(${sourceRect.left-sheetRect.left}px,${sourceRect.top-sheetRect.top}px,0) scale(${scaleX},${scaleY})`,
+      scale:Math.max(.04,Math.min(scaleX,scaleY))
+    };
+  }
+
+  function createSheetMorphIcon(origin,sheetRect,mode,duration){
+    if(!origin.iconMarkup)return null;
+    const icon=document.createElement('span');
+    icon.className='sheet-morph-icon';
+    icon.setAttribute('aria-hidden','true');
+    icon.innerHTML=origin.iconMarkup;
+    const iconRect=origin.iconRect||origin.rect;
+    Object.assign(icon.style,{
+      left:`${iconRect.left}px`,top:`${iconRect.top}px`,width:`${iconRect.width}px`,height:`${iconRect.height}px`,color:origin.color,fontSize:origin.iconFontSize
+    });
+    document.body.appendChild(icon);
+    const destinationX=sheetRect.left+sheetRect.width/2-(iconRect.left+iconRect.width/2);
+    const destinationY=sheetRect.top+46-(iconRect.top+iconRect.height/2);
+    const keyframes=mode==='open'
+      ? [{opacity:1,transform:'translate3d(0,0,0) rotate(0deg) scale(1)',offset:0},{opacity:0,transform:`translate3d(${destinationX}px,${destinationY}px,0) rotate(38deg) scale(.72)`,offset:.58},{opacity:0,transform:`translate3d(${destinationX}px,${destinationY}px,0) rotate(38deg) scale(.72)`,offset:1}]
+      : [{opacity:0,transform:'scale(.72)',offset:0},{opacity:0,transform:'scale(.72)',offset:.68},{opacity:1,transform:'scale(1)',offset:1}];
+    return {node:icon,animation:icon.animate(keyframes,{duration,easing:'cubic-bezier(.22,.78,.22,1)',fill:'both'})};
+  }
+
+  function completeSheetMorph(sequence){
+    const active=activeSheetMorph;
+    if(!active||active.sequence!==sequence)return;
+    clearTimeout(active.timer);
+    active.animations.forEach(animation=>{try{animation.cancel();}catch(_){}});
+    if(active.mode==='open'){
+      els.sheet.classList.remove('sheet-morph-hidden');
+      els.backdrop.style.opacity='';
+    }else{
+      els.backdrop.hidden=true;
+      els.backdrop.style.opacity='';
+    }
+    active.source?.classList.remove('sheet-morph-source');
+    active.nodes.forEach(node=>node.remove());
+    document.body.classList.remove('sheet-morphing');
+    activeSheetMorph=null;
+  }
+
+  function cancelSheetMorph(){
+    if(activeSheetMorph)completeSheetMorph(activeSheetMorph.sequence);
+  }
+
+  function registerSheetMorph(mode,source,nodes,animations,duration){
+    const sequence=++sheetMorphSequence;
+    source?.classList.add('sheet-morph-source');
+    document.body.classList.add('sheet-morphing');
+    activeSheetMorph={mode,source,nodes,animations,sequence,timer:setTimeout(()=>completeSheetMorph(sequence),duration+34)};
+  }
+
+  function animateSheetMorphOpen(origin){
+    const sheetRect=plainRect(els.sheet.getBoundingClientRect());
+    if(!validMorphRect(sheetRect)){
+      els.sheet.classList.remove('sheet-morph-hidden');
+      els.backdrop.style.opacity='';
+      return;
+    }
+    const clone=createSheetMorphClone(sheetRect);
+    const targetStyle=getComputedStyle(els.sheet);
+    const flip=sheetMorphTransform(sheetRect,origin.rect);
+    const sourceRadius=`${Math.min(999,(parseFloat(origin.borderRadius)||18)/flip.scale)}px`;
+    const duration=430;
+    const animations=[clone.animate([
+      {transform:flip.value,borderRadius:sourceRadius,backgroundColor:origin.backgroundColor,boxShadow:origin.boxShadow,offset:0},
+      {transform:'translate3d(0,0,0) scale(1,1)',borderRadius:targetStyle.borderRadius,backgroundColor:targetStyle.backgroundColor,boxShadow:targetStyle.boxShadow,offset:1}
+    ],{duration,easing:'cubic-bezier(.2,.82,.2,1)',fill:'both'})];
+    Array.from(clone.children).forEach(child=>animations.push(child.animate([
+      {opacity:0,transform:'translateY(7px)',offset:0},
+      {opacity:0,transform:'translateY(7px)',offset:.5},
+      {opacity:1,transform:'translateY(0)',offset:1}
+    ],{duration,easing:'ease-out',fill:'both'})));
+    animations.push(els.backdrop.animate([{opacity:0},{opacity:1}],{duration:300,easing:'ease-out',fill:'both'}));
+    const icon=createSheetMorphIcon(origin,sheetRect,'open',duration);
+    if(icon)animations.push(icon.animation);
+    registerSheetMorph('open',origin.element,[clone,...(icon?[icon.node]:[])],animations,duration);
+  }
+
+  function animateSheetMorphClose(origin){
+    const target=currentSheetMorphTarget(origin);
+    const sheetRect=plainRect(els.sheet.getBoundingClientRect());
+    if(!target||!validMorphRect(sheetRect))return false;
+    const clone=createSheetMorphClone(sheetRect);
+    const startStyle=getComputedStyle(els.sheet);
+    const flip=sheetMorphTransform(sheetRect,target.rect);
+    const targetRadius=`${Math.min(999,(parseFloat(target.borderRadius)||18)/flip.scale)}px`;
+    const duration=350;
+    const animations=[clone.animate([
+      {transform:'translate3d(0,0,0) scale(1,1)',borderRadius:startStyle.borderRadius,backgroundColor:startStyle.backgroundColor,boxShadow:startStyle.boxShadow,opacity:1,offset:0},
+      {transform:flip.value,borderRadius:targetRadius,backgroundColor:target.backgroundColor,boxShadow:target.boxShadow,opacity:1,offset:1}
+    ],{duration,easing:'cubic-bezier(.4,0,.25,1)',fill:'both'})];
+    Array.from(clone.children).forEach(child=>animations.push(child.animate([
+      {opacity:1,transform:'translateY(0)',offset:0},
+      {opacity:0,transform:'translateY(5px)',offset:.34},
+      {opacity:0,transform:'translateY(5px)',offset:1}
+    ],{duration,easing:'ease-in',fill:'both'})));
+    animations.push(els.backdrop.animate([{opacity:1},{opacity:0}],{duration:280,easing:'ease-in',fill:'both'}));
+    const icon=createSheetMorphIcon(target,sheetRect,'close',duration);
+    if(icon)animations.push(icon.animation);
+    registerSheetMorph('close',target.element,[clone,...(icon?[icon.node]:[])],animations,duration);
+    return true;
+  }
+
+  function openSheet(title,eyebrow,html,backAction=null,morphSource=null){
+    cancelSheetMorph();
     const wasOpen=!els.sheet.hidden;
+    const origin=!wasOpen&&morphingEnabled()?resolveSheetMorphSource(morphSource):null;
+    closeTransactionContextMenu(false);
     const previousDetent=els.sheet.dataset.detent||null;
     resetSheetDrag();
     sheetBackAction=typeof backAction==='function'?backAction:null;
@@ -1521,23 +1741,34 @@
     els.sheetEyebrow.textContent=eyebrow||'';
     els.sheetBackBtn.hidden=!sheetBackAction;
     els.sheetBody.innerHTML=html;
+    els.sheet.classList.toggle('sheet-morph-hidden',!!origin);
+    if(origin)els.backdrop.style.opacity='0';
     els.sheet.hidden=false;
     els.backdrop.hidden=false;
     document.body.style.overflow='hidden';
-    requestAnimationFrame(()=>configureSheetDetents(previousDetent,wasOpen));
+    if(!wasOpen)sheetMorphOrigin=origin;
+    requestAnimationFrame(()=>{
+      configureSheetDetents(previousDetent,wasOpen);
+      if(origin)animateSheetMorphOpen(origin);
+    });
     clearTimeout(sheetFocusTimer);
-    sheetFocusTimer=setTimeout(()=>els.sheetBody.querySelector('[autofocus]')?.focus(),60);
+    sheetFocusTimer=setTimeout(()=>els.sheetBody.querySelector('[autofocus]')?.focus(),origin?480:60);
   }
   function closeSheet(){
+    cancelSheetMorph();
     clearTimeout(sheetFocusTimer);
     clearTimeout(sheetResizeTimer);
     resetSheetDrag();
+    const morphOrigin=sheetMorphOrigin;
+    const shouldMorph=!els.sheet.hidden&&morphOrigin&&morphingEnabled()&&animateSheetMorphClose(morphOrigin);
+    sheetMorphOrigin=null;
     sheetBackAction=null;
     sheetDetents=[];
     sheetDetentIndex=1;
     els.sheetBackBtn.hidden=true;
+    els.sheet.classList.remove('sheet-morph-hidden');
     els.sheet.hidden=true;
-    els.backdrop.hidden=true;
+    if(!shouldMorph)els.backdrop.hidden=true;
     els.sheetBody.innerHTML='';
     els.sheet.style.removeProperty('--sheet-height');
     delete els.sheet.dataset.detent;
